@@ -14,7 +14,7 @@
         android:id="@+id/notif_btn_rewind"
         android:layout_width="36dp"
         android:layout_height="36dp"
-        android:background="?android:attr/selectableItemBackgroundBorderless"
+        android:background="@null"
         android:contentDescription="-10s"
         android:scaleType="centerInside"
         android:src="@android:drawable/ic_media_rew" />
@@ -34,7 +34,7 @@
         android:id="@+id/notif_btn_forward"
         android:layout_width="36dp"
         android:layout_height="36dp"
-        android:background="?android:attr/selectableItemBackgroundBorderless"
+        android:background="@null"
         android:contentDescription="+10s"
         android:scaleType="centerInside"
         android:src="@android:drawable/ic_media_ff" />
@@ -43,8 +43,8 @@
     <LinearLayout
         android:layout_width="0dp"
         android:layout_height="wrap_content"
-        android:layout_marginLeft="12dp"
-        android:layout_marginRight="12dp"
+        android:layout_marginLeft="10dp"
+        android:layout_marginRight="10dp"
         android:layout_weight="1"
         android:gravity="right|center_vertical"
         android:orientation="vertical">
@@ -55,7 +55,7 @@
             android:layout_height="wrap_content"
             android:ellipsize="end"
             android:maxLines="1"
-            android:text="سورة الكهف • الآية ١"
+            android:text="سورة الفاتحة • الآية ١"
             android:textColor="#FFFFFF"
             android:textSize="13sp"
             android:textStyle="bold" />
@@ -76,7 +76,7 @@
         android:id="@+id/notif_btn_close"
         android:layout_width="30dp"
         android:layout_height="30dp"
-        android:background="?android:attr/selectableItemBackgroundBorderless"
+        android:background="@null"
         android:contentDescription="Close"
         android:scaleType="centerInside"
         android:src="@android:drawable/ic_menu_close_clear_cancel" />

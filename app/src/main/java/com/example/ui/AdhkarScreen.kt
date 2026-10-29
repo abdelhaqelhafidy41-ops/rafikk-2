@@ -3,6 +3,7 @@ package com.example.ui
 import android.content.ClipData
 import android.content.ClipboardManager
 import android.content.Context
+import android.content.Intent
 import android.os.Build
 import android.os.VibrationEffect
 import android.os.Vibrator
@@ -66,6 +67,7 @@ fun AdhkarScreen(
 
     // Sunnah Sub-State
     var selectedBookId by remember { mutableStateOf("bukhari") }
+    var selectedChapter by remember(selectedBookId) { mutableStateOf<String?>(null) }
     var sunnahSearchQuery by remember { mutableStateOf("") }
 
     fun vibrate() {
@@ -209,6 +211,14 @@ fun AdhkarScreen(
                                 val cm = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
                                 cm.setPrimaryClip(ClipData.newPlainText("Dhikr", "${dhikr.text}\n[${dhikr.source}]"))
                                 Toast.makeText(context, "تم نسخ الذكر", Toast.LENGTH_SHORT).show()
+                            },
+                            onShare = {
+                                val sendIntent = Intent().apply {
+                                    action = Intent.ACTION_SEND
+                                    putExtra(Intent.EXTRA_TEXT, "${dhikr.text}\n\n[المصدر: ${dhikr.source}]\n${dhikr.virtue}")
+                                    type = "text/plain"
+                                }
+                                context.startActivity(Intent.createChooser(sendIntent, "مشاركة الذكر أو الدعاء"))
                             }
                         )
                     }
@@ -226,8 +236,11 @@ fun AdhkarScreen(
                         val isSelected = selectedBookId == book.id
                         FilterChip(
                             selected = isSelected,
-                            onClick = { selectedBookId = book.id },
-                            label = { Text(book.titleAr, fontFamily = CairoFontFamily, fontWeight = FontWeight.Bold) },
+                            onClick = {
+                                selectedBookId = book.id
+                                selectedChapter = null
+                            },
+                            label = { Text("${book.titleAr} (${book.hadithsCount})", fontFamily = CairoFontFamily, fontWeight = FontWeight.Bold) },
                             colors = FilterChipDefaults.filterChipColors(
                                 selectedContainerColor = IslamicGold,
                                 selectedLabelColor = Color.White
@@ -256,12 +269,45 @@ fun AdhkarScreen(
                         .padding(horizontal = 16.dp, vertical = 4.dp)
                 )
 
+                // Chapter filter chips when not searching
+                val availableChapters = remember(selectedBookId) {
+                    SunnahData.getChaptersForBook(selectedBookId)
+                }
+                if (sunnahSearchQuery.isBlank() && availableChapters.size > 1) {
+                    LazyRow(
+                        horizontalArrangement = Arrangement.spacedBy(6.dp),
+                        contentPadding = PaddingValues(horizontal = 16.dp, vertical = 4.dp),
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        item {
+                            FilterChip(
+                                selected = selectedChapter == null,
+                                onClick = { selectedChapter = null },
+                                label = { Text("جميع الأبواب", fontFamily = CairoFontFamily, fontSize = 12.sp) }
+                            )
+                        }
+                        items(availableChapters) { chapter ->
+                            val isSelected = selectedChapter == chapter
+                            FilterChip(
+                                selected = isSelected,
+                                onClick = { selectedChapter = if (isSelected) null else chapter },
+                                label = { Text(chapter, fontFamily = CairoFontFamily, fontSize = 12.sp) }
+                            )
+                        }
+                    }
+                }
+
                 val currentBook = remember(selectedBookId) { SunnahData.getBookById(selectedBookId) }
-                val hadithList = remember(selectedBookId, sunnahSearchQuery) {
-                    if (sunnahSearchQuery.isNotBlank()) {
-                        SunnahData.searchHadiths(sunnahSearchQuery)
+                val hadithList = remember(selectedBookId, selectedChapter, sunnahSearchQuery) {
+                    val list = if (sunnahSearchQuery.isNotBlank()) {
+                        SunnahData.searchHadiths(sunnahSearchQuery, selectedBookId)
                     } else {
                         SunnahData.getHadithsByBook(selectedBookId)
+                    }
+                    if (selectedChapter != null && sunnahSearchQuery.isBlank()) {
+                        list.filter { it.chapterTitle == selectedChapter }
+                    } else {
+                        list
                     }
                 }
 
@@ -272,7 +318,7 @@ fun AdhkarScreen(
                     contentPadding = PaddingValues(16.dp, 8.dp, 16.dp, 96.dp),
                     verticalArrangement = Arrangement.spacedBy(12.dp)
                 ) {
-                    if (sunnahSearchQuery.isBlank() && currentBook != null) {
+                    if (sunnahSearchQuery.isBlank() && currentBook != null && selectedChapter == null) {
                         item {
                             Card(
                                 shape = RoundedCornerShape(14.dp),
@@ -280,13 +326,32 @@ fun AdhkarScreen(
                                 modifier = Modifier.fillMaxWidth()
                             ) {
                                 Column(modifier = Modifier.padding(14.dp)) {
-                                    Text(
-                                        text = currentBook.titleAr,
-                                        style = MaterialTheme.typography.titleMedium,
-                                        fontFamily = CairoFontFamily,
-                                        fontWeight = FontWeight.Bold,
-                                        color = IslamicGreenDark
-                                    )
+                                    Row(
+                                        modifier = Modifier.fillMaxWidth(),
+                                        horizontalArrangement = Arrangement.SpaceBetween,
+                                        verticalAlignment = Alignment.CenterVertically
+                                    ) {
+                                        Text(
+                                            text = currentBook.titleAr,
+                                            style = MaterialTheme.typography.titleMedium,
+                                            fontFamily = CairoFontFamily,
+                                            fontWeight = FontWeight.Bold,
+                                            color = IslamicGreenDark
+                                        )
+                                        Surface(
+                                            shape = RoundedCornerShape(6.dp),
+                                            color = IslamicGold.copy(alpha = 0.2f)
+                                        ) {
+                                            Text(
+                                                text = "${currentBook.hadithsCount} حديث معتمد",
+                                                style = MaterialTheme.typography.labelSmall,
+                                                fontFamily = CairoFontFamily,
+                                                fontWeight = FontWeight.Bold,
+                                                color = IslamicGoldDark,
+                                                modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
+                                            )
+                                        }
+                                    }
                                     Text(
                                         text = currentBook.authorAr,
                                         style = MaterialTheme.typography.bodySmall,
@@ -312,6 +377,14 @@ fun AdhkarScreen(
                                 val cm = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
                                 cm.setPrimaryClip(ClipData.newPlainText("Hadith", "${hadith.narrator}\n${hadith.arabicText}\n[${hadith.grade}]"))
                                 Toast.makeText(context, "تم نسخ الحديث الشريف", Toast.LENGTH_SHORT).show()
+                            },
+                            onShare = {
+                                val sendIntent = Intent().apply {
+                                    action = Intent.ACTION_SEND
+                                    putExtra(Intent.EXTRA_TEXT, "${hadith.narrator}\n\n${hadith.arabicText}\n\n[الحكم: ${hadith.grade}]\n${hadith.explanationOrBenefit}")
+                                    type = "text/plain"
+                                }
+                                context.startActivity(Intent.createChooser(sendIntent, "مشاركة الحديث الشريف"))
                             }
                         )
                     }
@@ -340,7 +413,8 @@ fun AthkarCard(
     isCompleted: Boolean,
     onIncrement: () -> Unit,
     onReset: () -> Unit,
-    onCopy: () -> Unit
+    onCopy: () -> Unit,
+    onShare: () -> Unit
 ) {
     Card(
         modifier = Modifier
@@ -378,9 +452,12 @@ fun AthkarCard(
                     )
                 }
 
-                Row {
+                Row(verticalAlignment = Alignment.CenterVertically) {
                     IconButton(onClick = onCopy, modifier = Modifier.size(32.dp)) {
                         Icon(Icons.Default.ContentCopy, contentDescription = "نسخ الذكر", modifier = Modifier.size(18.dp))
+                    }
+                    IconButton(onClick = onShare, modifier = Modifier.size(32.dp)) {
+                        Icon(Icons.Default.Share, contentDescription = "مشاركة الذكر", modifier = Modifier.size(18.dp))
                     }
                     if (doneCount > 0) {
                         IconButton(onClick = onReset, modifier = Modifier.size(32.dp)) {
@@ -477,7 +554,8 @@ fun AthkarCard(
 @Composable
 fun HadithCard(
     hadith: HadithItem,
-    onCopy: () -> Unit
+    onCopy: () -> Unit,
+    onShare: () -> Unit
 ) {
     Card(
         modifier = Modifier
@@ -507,8 +585,13 @@ fun HadithCard(
                     )
                 }
 
-                IconButton(onClick = onCopy, modifier = Modifier.size(32.dp)) {
-                    Icon(Icons.Default.ContentCopy, contentDescription = "نسخ الحديث", modifier = Modifier.size(18.dp))
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    IconButton(onClick = onCopy, modifier = Modifier.size(32.dp)) {
+                        Icon(Icons.Default.ContentCopy, contentDescription = "نسخ الحديث", modifier = Modifier.size(18.dp))
+                    }
+                    IconButton(onClick = onShare, modifier = Modifier.size(32.dp)) {
+                        Icon(Icons.Default.Share, contentDescription = "مشاركة الحديث", modifier = Modifier.size(18.dp))
+                    }
                 }
             }
 

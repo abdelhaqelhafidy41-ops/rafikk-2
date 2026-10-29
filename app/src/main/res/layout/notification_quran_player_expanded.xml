@@ -21,7 +21,7 @@
             android:id="@+id/notif_expanded_btn_close"
             android:layout_width="28dp"
             android:layout_height="28dp"
-            android:background="?android:attr/selectableItemBackgroundBorderless"
+            android:background="@null"
             android:contentDescription="Close"
             android:scaleType="centerInside"
             android:src="@android:drawable/ic_menu_close_clear_cancel" />
@@ -59,7 +59,7 @@
             android:id="@+id/notif_expanded_tv_title"
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
-            android:text="سورة الكهف • الآية ١ من ١١٠"
+            android:text="سورة الفاتحة • الآية ١ من ٧"
             android:textColor="#FFFFFF"
             android:textSize="14sp"
             android:textStyle="bold" />
@@ -78,28 +78,22 @@
             android:id="@+id/notif_expanded_btn_prev"
             android:layout_width="40dp"
             android:layout_height="40dp"
-            android:background="?android:attr/selectableItemBackgroundBorderless"
+            android:layout_marginRight="8dp"
+            android:background="@null"
             android:contentDescription="السورة السابقة"
             android:scaleType="centerInside"
             android:src="@android:drawable/ic_media_previous" />
-
-        <Space
-            android:layout_width="16dp"
-            android:layout_height="1dp" />
 
         <!-- Rewind 10s -->
         <ImageButton
             android:id="@+id/notif_expanded_btn_rewind"
             android:layout_width="40dp"
             android:layout_height="40dp"
-            android:background="?android:attr/selectableItemBackgroundBorderless"
+            android:layout_marginRight="10dp"
+            android:background="@null"
             android:contentDescription="-10s"
             android:scaleType="centerInside"
             android:src="@android:drawable/ic_media_rew" />
-
-        <Space
-            android:layout_width="16dp"
-            android:layout_height="1dp" />
 
         <!-- Big Play/Pause Button in golden/green circle -->
         <ImageButton
@@ -111,30 +105,24 @@
             android:scaleType="centerInside"
             android:src="@android:drawable/ic_media_play" />
 
-        <Space
-            android:layout_width="16dp"
-            android:layout_height="1dp" />
-
         <!-- Forward 10s -->
         <ImageButton
             android:id="@+id/notif_expanded_btn_forward"
             android:layout_width="40dp"
             android:layout_height="40dp"
-            android:background="?android:attr/selectableItemBackgroundBorderless"
+            android:layout_marginLeft="10dp"
+            android:background="@null"
             android:contentDescription="+10s"
             android:scaleType="centerInside"
             android:src="@android:drawable/ic_media_ff" />
-
-        <Space
-            android:layout_width="16dp"
-            android:layout_height="1dp" />
 
         <!-- Next Surah -->
         <ImageButton
             android:id="@+id/notif_expanded_btn_next"
             android:layout_width="40dp"
             android:layout_height="40dp"
-            android:background="?android:attr/selectableItemBackgroundBorderless"
+            android:layout_marginLeft="8dp"
+            android:background="@null"
             android:contentDescription="السورة التالية"
             android:scaleType="centerInside"
             android:src="@android:drawable/ic_media_next" />

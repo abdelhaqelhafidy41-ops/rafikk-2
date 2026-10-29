@@ -11,8 +11,10 @@ import android.media.AudioFocusRequest
 import android.media.AudioManager
 import android.media.MediaPlayer
 import android.media.PlaybackParams
+import android.content.pm.ServiceInfo
 import android.os.Build
 import android.os.IBinder
+import android.util.Log
 import android.widget.RemoteViews
 import androidx.core.app.NotificationCompat
 import com.example.MainActivity
@@ -80,26 +82,34 @@ class QuranAudioService : Service(), AudioManager.OnAudioFocusChangeListener {
             audioUrl: String? = null,
             speed: Float = 1.0f
         ) {
-            val intent = Intent(context, QuranAudioService::class.java).apply {
-                action = ACTION_START_AYAH
-                putExtra(EXTRA_SURAH_NUM, surahNumber)
-                putExtra(EXTRA_AYAH_NUM, ayahNumber)
-                putExtra(EXTRA_RECITER_ID, reciterId)
-                putExtra(EXTRA_AUDIO_URL, audioUrl)
-                putExtra(EXTRA_SPEED, speed)
-            }
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-                context.startForegroundService(intent)
-            } else {
-                context.startService(intent)
+            try {
+                val intent = Intent(context, QuranAudioService::class.java).apply {
+                    action = ACTION_START_AYAH
+                    putExtra(EXTRA_SURAH_NUM, surahNumber)
+                    putExtra(EXTRA_AYAH_NUM, ayahNumber)
+                    putExtra(EXTRA_RECITER_ID, reciterId)
+                    putExtra(EXTRA_AUDIO_URL, audioUrl)
+                    putExtra(EXTRA_SPEED, speed)
+                }
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                    context.startForegroundService(intent)
+                } else {
+                    context.startService(intent)
+                }
+            } catch (e: Throwable) {
+                Log.e("QuranAudioService", "startPlaying failed: ${e.message}", e)
             }
         }
 
         fun sendControl(context: Context, action: String) {
-            val intent = Intent(context, QuranAudioService::class.java).apply {
-                this.action = action
+            try {
+                val intent = Intent(context, QuranAudioService::class.java).apply {
+                    this.action = action
+                }
+                context.startService(intent)
+            } catch (e: Throwable) {
+                Log.e("QuranAudioService", "sendControl failed: ${e.message}", e)
             }
-            context.startService(intent)
         }
     }
 
@@ -163,7 +173,7 @@ class QuranAudioService : Service(), AudioManager.OnAudioFocusChangeListener {
         }
 
         QuranAudioController.onAyahChangedListener?.invoke(surahNumber, ayahNumber)
-        startForeground(NOTIFICATION_ID, buildNotification(isLoading = true))
+        startServiceInForeground(buildNotification(isLoading = true))
 
         requestAudioFocus()
 
@@ -334,33 +344,6 @@ class QuranAudioService : Service(), AudioManager.OnAudioFocusChangeListener {
         val subtitle = "${s.reciterName} • رفيق المسلم"
         val playPauseIcon = if (s.isPlaying) android.R.drawable.ic_media_pause else android.R.drawable.ic_media_play
 
-        // Custom compact view (Islamic colors, play/pause, +/-10s, title, close)
-        val collapsedView = RemoteViews(packageName, R.layout.notification_quran_player).apply {
-            setTextViewText(R.id.notif_tv_title, "سورة ${s.currentSurahName} • الآية ${s.currentAyahNumber}")
-            setTextViewText(R.id.notif_tv_reciter, if (isLoading) "جاري التحميل..." else "${s.reciterName} • رفيق المسلم")
-            setImageViewResource(R.id.notif_btn_play_pause, playPauseIcon)
-            setOnClickPendingIntent(R.id.notif_btn_rewind, rew10PI)
-            setOnClickPendingIntent(R.id.notif_btn_play_pause, playPausePI)
-            setOnClickPendingIntent(R.id.notif_btn_forward, fwd10PI)
-            setOnClickPendingIntent(R.id.notif_btn_close, stopPI)
-            setOnClickPendingIntent(R.id.notif_root, contentPendingIntent)
-        }
-
-        // Custom expanded view (all 5 player controls, large gold play button, reciter & surah info)
-        val expandedView = RemoteViews(packageName, R.layout.notification_quran_player_expanded).apply {
-            setTextViewText(R.id.notif_expanded_tv_app_title, "رفيق المسلم • تلاوة القرآن الكريم")
-            setTextViewText(R.id.notif_expanded_tv_title, "سورة ${s.currentSurahName} • الآية ${s.currentAyahNumber} من ${s.totalAyahs}")
-            setTextViewText(R.id.notif_expanded_tv_reciter, if (isLoading) "جاري التحميل..." else s.reciterName)
-            setImageViewResource(R.id.notif_expanded_btn_play_pause, playPauseIcon)
-            setOnClickPendingIntent(R.id.notif_expanded_btn_prev, prevSurahPI)
-            setOnClickPendingIntent(R.id.notif_expanded_btn_rewind, rew10PI)
-            setOnClickPendingIntent(R.id.notif_expanded_btn_play_pause, playPausePI)
-            setOnClickPendingIntent(R.id.notif_expanded_btn_forward, fwd10PI)
-            setOnClickPendingIntent(R.id.notif_expanded_btn_next, nextSurahPI)
-            setOnClickPendingIntent(R.id.notif_expanded_btn_close, stopPI)
-            setOnClickPendingIntent(R.id.notif_expanded_root, contentPendingIntent)
-        }
-
         val builder = NotificationCompat.Builder(this, CHANNEL_ID)
             .setSmallIcon(android.R.drawable.ic_media_play)
             .setContentTitle(title)
@@ -370,21 +353,77 @@ class QuranAudioService : Service(), AudioManager.OnAudioFocusChangeListener {
             .setOngoing(s.isPlaying)
             .setOnlyAlertOnce(true)
             .setVisibility(NotificationCompat.VISIBILITY_PUBLIC)
-            .setCustomContentView(collapsedView)
-            .setCustomBigContentView(expandedView)
-            .setStyle(NotificationCompat.DecoratedCustomViewStyle())
             .addAction(android.R.drawable.ic_media_previous, "السابقة", prevSurahPI)
             .addAction(android.R.drawable.ic_media_rew, "-10ث", rew10PI)
             .addAction(playPauseIcon, if (s.isPlaying) "إيقاف" else "تشغيل", playPausePI)
             .addAction(android.R.drawable.ic_media_ff, "+10ث", fwd10PI)
             .addAction(android.R.drawable.ic_media_next, "التالية", nextSurahPI)
 
+        try {
+            // Custom compact view (Islamic colors, play/pause, +/-10s, title, close)
+            val collapsedView = RemoteViews(packageName, R.layout.notification_quran_player).apply {
+                setTextViewText(R.id.notif_tv_title, "سورة ${s.currentSurahName} • الآية ${s.currentAyahNumber}")
+                setTextViewText(R.id.notif_tv_reciter, if (isLoading) "جاري التحميل..." else "${s.reciterName} • رفيق المسلم")
+                setImageViewResource(R.id.notif_btn_play_pause, playPauseIcon)
+                setOnClickPendingIntent(R.id.notif_btn_rewind, rew10PI)
+                setOnClickPendingIntent(R.id.notif_btn_play_pause, playPausePI)
+                setOnClickPendingIntent(R.id.notif_btn_forward, fwd10PI)
+                setOnClickPendingIntent(R.id.notif_btn_close, stopPI)
+                setOnClickPendingIntent(R.id.notif_root, contentPendingIntent)
+            }
+
+            // Custom expanded view (all 5 player controls, large gold play button, reciter & surah info)
+            val expandedView = RemoteViews(packageName, R.layout.notification_quran_player_expanded).apply {
+                setTextViewText(R.id.notif_expanded_tv_app_title, "رفيق المسلم • تلاوة القرآن الكريم")
+                setTextViewText(R.id.notif_expanded_tv_title, "سورة ${s.currentSurahName} • الآية ${s.currentAyahNumber} من ${s.totalAyahs}")
+                setTextViewText(R.id.notif_expanded_tv_reciter, if (isLoading) "جاري التحميل..." else s.reciterName)
+                setImageViewResource(R.id.notif_expanded_btn_play_pause, playPauseIcon)
+                setOnClickPendingIntent(R.id.notif_expanded_btn_prev, prevSurahPI)
+                setOnClickPendingIntent(R.id.notif_expanded_btn_rewind, rew10PI)
+                setOnClickPendingIntent(R.id.notif_expanded_btn_play_pause, playPausePI)
+                setOnClickPendingIntent(R.id.notif_expanded_btn_forward, fwd10PI)
+                setOnClickPendingIntent(R.id.notif_expanded_btn_next, nextSurahPI)
+                setOnClickPendingIntent(R.id.notif_expanded_btn_close, stopPI)
+                setOnClickPendingIntent(R.id.notif_expanded_root, contentPendingIntent)
+            }
+
+            builder.setCustomContentView(collapsedView)
+            builder.setCustomBigContentView(expandedView)
+            builder.setStyle(NotificationCompat.DecoratedCustomViewStyle())
+        } catch (e: Throwable) {
+            Log.e("QuranAudioService", "Error binding RemoteViews: ${e.message}", e)
+            builder.setStyle(
+                NotificationCompat.BigTextStyle()
+                    .bigText("سورة ${s.currentSurahName} • الآية ${s.currentAyahNumber} من ${s.totalAyahs}\nالقارئ: ${s.reciterName}")
+            )
+        }
+
         return builder.build()
     }
 
+    private fun startServiceInForeground(notification: android.app.Notification) {
+        try {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                startForeground(
+                    NOTIFICATION_ID,
+                    notification,
+                    ServiceInfo.FOREGROUND_SERVICE_TYPE_MEDIA_PLAYBACK
+                )
+            } else {
+                startForeground(NOTIFICATION_ID, notification)
+            }
+        } catch (e: Throwable) {
+            Log.e("QuranAudioService", "Error in startForeground: ${e.message}", e)
+        }
+    }
+
     private fun updateNotification() {
-        val nm = getSystemService(Context.NOTIFICATION_SERVICE) as? NotificationManager
-        nm?.notify(NOTIFICATION_ID, buildNotification())
+        try {
+            val nm = getSystemService(Context.NOTIFICATION_SERVICE) as? NotificationManager
+            nm?.notify(NOTIFICATION_ID, buildNotification())
+        } catch (e: Throwable) {
+            Log.e("QuranAudioService", "updateNotification failed: ${e.message}", e)
+        }
     }
 
     private fun buildServicePI(action: String, requestCode: Int): PendingIntent {
