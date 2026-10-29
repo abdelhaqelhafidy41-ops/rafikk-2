@@ -1,0 +1,144 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:id="@+id/notif_expanded_root"
+    android:layout_width="match_parent"
+    android:layout_height="128dp"
+    android:background="@drawable/bg_notif_container"
+    android:orientation="vertical"
+    android:paddingLeft="14dp"
+    android:paddingTop="8dp"
+    android:paddingRight="14dp"
+    android:paddingBottom="10dp">
+
+    <!-- Top Branding & Close Header -->
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:gravity="center_vertical"
+        android:orientation="horizontal">
+
+        <ImageButton
+            android:id="@+id/notif_expanded_btn_close"
+            android:layout_width="28dp"
+            android:layout_height="28dp"
+            android:background="?android:attr/selectableItemBackgroundBorderless"
+            android:contentDescription="Close"
+            android:scaleType="centerInside"
+            android:src="@android:drawable/ic_menu_close_clear_cancel" />
+
+        <TextView
+            android:id="@+id/notif_expanded_tv_app_title"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:gravity="right"
+            android:text="رفيق المسلم • تلاوة القرآن الكريم"
+            android:textColor="#F3C649"
+            android:textSize="11sp"
+            android:textStyle="bold" />
+    </LinearLayout>
+
+    <!-- Surah & Reciter Info -->
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="2dp"
+        android:gravity="right|center_vertical"
+        android:orientation="horizontal">
+
+        <TextView
+            android:id="@+id/notif_expanded_tv_reciter"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginRight="8dp"
+            android:text="مشاري راشد العفاسي"
+            android:textColor="#C8E6C9"
+            android:textSize="12sp" />
+
+        <TextView
+            android:id="@+id/notif_expanded_tv_title"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="سورة الكهف • الآية ١ من ١١٠"
+            android:textColor="#FFFFFF"
+            android:textSize="14sp"
+            android:textStyle="bold" />
+    </LinearLayout>
+
+    <!-- Full Playback Controls Row (5 buttons matching app style) -->
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="8dp"
+        android:gravity="center"
+        android:orientation="horizontal">
+
+        <!-- Previous Surah -->
+        <ImageButton
+            android:id="@+id/notif_expanded_btn_prev"
+            android:layout_width="40dp"
+            android:layout_height="40dp"
+            android:background="?android:attr/selectableItemBackgroundBorderless"
+            android:contentDescription="السورة السابقة"
+            android:scaleType="centerInside"
+            android:src="@android:drawable/ic_media_previous" />
+
+        <Space
+            android:layout_width="16dp"
+            android:layout_height="1dp" />
+
+        <!-- Rewind 10s -->
+        <ImageButton
+            android:id="@+id/notif_expanded_btn_rewind"
+            android:layout_width="40dp"
+            android:layout_height="40dp"
+            android:background="?android:attr/selectableItemBackgroundBorderless"
+            android:contentDescription="-10s"
+            android:scaleType="centerInside"
+            android:src="@android:drawable/ic_media_rew" />
+
+        <Space
+            android:layout_width="16dp"
+            android:layout_height="1dp" />
+
+        <!-- Big Play/Pause Button in golden/green circle -->
+        <ImageButton
+            android:id="@+id/notif_expanded_btn_play_pause"
+            android:layout_width="48dp"
+            android:layout_height="48dp"
+            android:background="@drawable/bg_notif_play_circle"
+            android:contentDescription="Play/Pause"
+            android:scaleType="centerInside"
+            android:src="@android:drawable/ic_media_play" />
+
+        <Space
+            android:layout_width="16dp"
+            android:layout_height="1dp" />
+
+        <!-- Forward 10s -->
+        <ImageButton
+            android:id="@+id/notif_expanded_btn_forward"
+            android:layout_width="40dp"
+            android:layout_height="40dp"
+            android:background="?android:attr/selectableItemBackgroundBorderless"
+            android:contentDescription="+10s"
+            android:scaleType="centerInside"
+            android:src="@android:drawable/ic_media_ff" />
+
+        <Space
+            android:layout_width="16dp"
+            android:layout_height="1dp" />
+
+        <!-- Next Surah -->
+        <ImageButton
+            android:id="@+id/notif_expanded_btn_next"
+            android:layout_width="40dp"
+            android:layout_height="40dp"
+            android:background="?android:attr/selectableItemBackgroundBorderless"
+            android:contentDescription="السورة التالية"
+            android:scaleType="centerInside"
+            android:src="@android:drawable/ic_media_next" />
+
+    </LinearLayout>
+
+</LinearLayout>

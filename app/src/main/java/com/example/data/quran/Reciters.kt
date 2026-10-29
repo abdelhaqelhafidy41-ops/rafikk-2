@@ -10,6 +10,8 @@ data class ReciterInfo(
 
 object RecitersData {
 
+    val allReciters: List<ReciterInfo> get() = famousReciters
+
     val famousReciters = listOf(
         ReciterInfo(
             id = "alafasy",

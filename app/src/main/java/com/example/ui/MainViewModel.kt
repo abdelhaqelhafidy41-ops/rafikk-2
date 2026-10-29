@@ -13,6 +13,8 @@ import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.example.RafiqApplication
 import com.example.audio.AudioDownloadManager
+import com.example.audio.QuranAudioController
+import com.example.audio.QuranAudioService
 import com.example.data.adhkar.AdhkarData
 import com.example.data.adhkar.DailyInspiration
 import com.example.data.database.*
@@ -135,25 +137,36 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     private val _isGpsLoading = MutableStateFlow(false)
     val isGpsLoading: StateFlow<Boolean> = _isGpsLoading.asStateFlow()
 
-    // Audio Player State
-    private val _isAudioPlaying = MutableStateFlow(false)
-    val isAudioPlaying: StateFlow<Boolean> = _isAudioPlaying.asStateFlow()
+    // Audio Player State linked to Background QuranAudioController
+    val isAudioPlaying: StateFlow<Boolean> = QuranAudioController.state
+        .map { it.isPlaying }
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), false)
 
-    private val _playingAyahNumber = MutableStateFlow<Int?>(null)
-    val playingAyahNumber: StateFlow<Int?> = _playingAyahNumber.asStateFlow()
+    val playingAyahNumber: StateFlow<Int?> = QuranAudioController.state
+        .map { if (it.isPlaying || it.isLoading) it.currentAyahNumber else null }
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), null)
 
-    private val _isAudioLoading = MutableStateFlow(false)
-    val isAudioLoading: StateFlow<Boolean> = _isAudioLoading.asStateFlow()
-
-    private val _audioPlaybackProgress = MutableStateFlow(0f) // 0..1
-    val audioPlaybackProgress: StateFlow<Float> = _audioPlaybackProgress.asStateFlow()
-
-    private var mediaPlayer: MediaPlayer? = null
-    private var audioManager: AudioManager? = null
-    private var audioFocusRequest: AudioFocusRequest? = null
+    val isAudioLoading: StateFlow<Boolean> = QuranAudioController.state
+        .map { it.isLoading }
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), false)
 
     init {
-        audioManager = getApplication<Application>().getSystemService(Context.AUDIO_SERVICE) as? AudioManager
+        QuranAudioController.onAyahChangedListener = { surah, ayah ->
+            val meta = QuranData.allSurahs.find { it.number == surah }
+            saveLastRead(surah, meta?.nameAr ?: "", ayah)
+        }
+    }
+
+    fun handleBackPress(): Boolean {
+        if (_subScreen.value != SubScreen.NONE) {
+            _subScreen.value = SubScreen.NONE
+            return true
+        }
+        if (_selectedTab.value != NavigationTab.HOME) {
+            _selectedTab.value = NavigationTab.HOME
+            return true
+        }
+        return false
     }
 
     val todayHijri: StateFlow<String> = flow {
@@ -432,11 +445,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         viewModelScope.launch(Dispatchers.IO) {
             repository.saveSettings(settings.value.copy(audioSpeed = speed))
         }
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
-            try {
-                mediaPlayer?.playbackParams = mediaPlayer?.playbackParams?.setSpeed(speed) ?: PlaybackParams().setSpeed(speed)
-            } catch (_: Exception) {}
-        }
+        QuranAudioController.updateState { it.copy(speed = speed) }
     }
 
     fun updateRepeatMode(mode: String) {
@@ -575,174 +584,53 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
-    // Audio Playback with Offline Fallback, Continuous Playback, and AudioFocus
+    // Background Audio Playback with Foreground Service and Notification controls
     fun playAyahAudio(ayah: AyahItem) {
-        stopAudio()
-        _isAudioLoading.value = true
-        _playingAyahNumber.value = ayah.ayahNumber
-
-        requestAudioFocus()
-
-        val reciterId = settings.value.selectedReciterId
-        val localFile = downloadManager.getLocalAyahFile(reciterId, ayah.surahNumber, ayah.ayahNumber)
-
-        try {
-            mediaPlayer = MediaPlayer().apply {
-                setAudioAttributes(
-                    AudioAttributes.Builder()
-                        .setContentType(AudioAttributes.CONTENT_TYPE_SPEECH)
-                        .setUsage(AudioAttributes.USAGE_MEDIA)
-                        .build()
-                )
-
-                if (localFile != null && localFile.exists()) {
-                    setDataSource(localFile.absolutePath)
-                } else {
-                    val url = ayah.audioUrl ?: RecitersData.getAyahAudioUrl(reciterId, ayah.surahNumber, ayah.ayahNumber)
-                    setDataSource(url)
-                }
-
-                setOnPreparedListener { mp ->
-                    _isAudioLoading.value = false
-                    _isAudioPlaying.value = true
-                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
-                        try {
-                            mp.playbackParams = mp.playbackParams.setSpeed(settings.value.audioSpeed)
-                        } catch (_: Exception) {}
-                    }
-                    mp.start()
-                }
-
-                setOnCompletionListener {
-                    handleAyahCompletion(ayah)
-                }
-
-                setOnErrorListener { _, _, _ ->
-                    _isAudioLoading.value = false
-                    _isAudioPlaying.value = false
-                    _playingAyahNumber.value = null
-                    true
-                }
-
-                prepareAsync()
-            }
-        } catch (e: Exception) {
-            _isAudioLoading.value = false
-            _isAudioPlaying.value = false
-            _playingAyahNumber.value = null
-        }
-    }
-
-    private fun handleAyahCompletion(completedAyah: AyahItem) {
-        val mode = settings.value.repeatMode
-        if (mode == "ONE_AYAH") {
-            playAyahAudio(completedAyah)
-            return
-        }
-
-        val ayahs = _activeAyahs.value
-        val nextAyah = ayahs.find { it.ayahNumber == completedAyah.ayahNumber + 1 }
-        if (nextAyah != null) {
-            playAyahAudio(nextAyah)
-        } else {
-            // Surah ended
-            if (mode == "SURAH") {
-                ayahs.firstOrNull()?.let { playAyahAudio(it) }
-            } else if (settings.value.autoAdvanceSurah) {
-                val nextSurahNum = completedAyah.surahNumber + 1
-                if (nextSurahNum <= 114) {
-                    val nextSurah = QuranData.allSurahs.find { it.number == nextSurahNum }
-                    if (nextSurah != null) {
-                        openSurah(nextSurah)
-                        val nextSurahAyahs = QuranData.getSurahAyahs(nextSurahNum, settings.value.selectedReciterId, getApplication())
-                        nextSurahAyahs.firstOrNull()?.let { playAyahAudio(it) }
-                        return
-                    }
-                }
-                stopAudio()
-            } else {
-                stopAudio()
-            }
-        }
+        QuranAudioService.startPlaying(
+            context = getApplication(),
+            surahNumber = ayah.surahNumber,
+            ayahNumber = ayah.ayahNumber,
+            reciterId = settings.value.selectedReciterId,
+            speed = settings.value.audioSpeed
+        )
     }
 
     fun playNextAyah() {
-        val currentNum = _playingAyahNumber.value ?: return
-        val next = _activeAyahs.value.find { it.ayahNumber == currentNum + 1 }
-        if (next != null) {
-            playAyahAudio(next)
+        val s = QuranAudioController.state.value
+        if (s.currentAyahNumber < s.totalAyahs) {
+            QuranAudioService.startPlaying(
+                context = getApplication(),
+                surahNumber = s.currentSurahNumber,
+                ayahNumber = s.currentAyahNumber + 1,
+                reciterId = s.reciterId,
+                speed = s.speed
+            )
+        } else {
+            QuranAudioService.sendControl(getApplication(), QuranAudioService.ACTION_NEXT_SURAH)
         }
     }
 
     fun playPreviousAyah() {
-        val currentNum = _playingAyahNumber.value ?: return
-        val prev = _activeAyahs.value.find { it.ayahNumber == currentNum - 1 }
-        if (prev != null) {
-            playAyahAudio(prev)
+        val s = QuranAudioController.state.value
+        if (s.currentAyahNumber > 1) {
+            QuranAudioService.startPlaying(
+                context = getApplication(),
+                surahNumber = s.currentSurahNumber,
+                ayahNumber = s.currentAyahNumber - 1,
+                reciterId = s.reciterId,
+                speed = s.speed
+            )
+        } else {
+            QuranAudioService.sendControl(getApplication(), QuranAudioService.ACTION_PREV_SURAH)
         }
     }
 
     fun pauseAudio() {
-        mediaPlayer?.let {
-            if (it.isPlaying) {
-                it.pause()
-                _isAudioPlaying.value = false
-            } else {
-                it.start()
-                _isAudioPlaying.value = true
-            }
-        }
+        QuranAudioService.sendControl(getApplication(), QuranAudioService.ACTION_PLAY_PAUSE)
     }
 
     fun stopAudio() {
-        try {
-            mediaPlayer?.stop()
-            mediaPlayer?.release()
-        } catch (_: Exception) {}
-        mediaPlayer = null
-        _isAudioPlaying.value = false
-        _playingAyahNumber.value = null
-        _isAudioLoading.value = false
-        abandonAudioFocus()
-    }
-
-    private fun requestAudioFocus() {
-        val am = audioManager ?: return
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-            val req = AudioFocusRequest.Builder(AudioManager.AUDIOFOCUS_GAIN)
-                .setAudioAttributes(
-                    AudioAttributes.Builder()
-                        .setContentType(AudioAttributes.CONTENT_TYPE_SPEECH)
-                        .setUsage(AudioAttributes.USAGE_MEDIA)
-                        .build()
-                )
-                .setOnAudioFocusChangeListener { focusChange ->
-                    if (focusChange == AudioManager.AUDIOFOCUS_LOSS ||
-                        focusChange == AudioManager.AUDIOFOCUS_LOSS_TRANSIENT
-                    ) {
-                        pauseAudio()
-                    }
-                }
-                .build()
-            audioFocusRequest = req
-            am.requestAudioFocus(req)
-        } else {
-            @Suppress("DEPRECATION")
-            am.requestAudioFocus(
-                { focusChange ->
-                    if (focusChange == AudioManager.AUDIOFOCUS_LOSS) pauseAudio()
-                },
-                AudioManager.STREAM_MUSIC,
-                AudioManager.AUDIOFOCUS_GAIN
-            )
-        }
-    }
-
-    private fun abandonAudioFocus() {
-        val am = audioManager ?: return
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-            audioFocusRequest?.let { am.abandonAudioFocusRequest(it) }
-        }
+        QuranAudioService.sendControl(getApplication(), QuranAudioService.ACTION_STOP)
     }
 
     override fun onCleared() {

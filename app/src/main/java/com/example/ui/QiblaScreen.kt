@@ -28,9 +28,7 @@ import androidx.compose.ui.draw.rotate
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.drawscope.DrawScope
-import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
@@ -57,10 +55,19 @@ fun QiblaScreen(
         QiblaCalculator.calculateQibla(userLat, userLng)
     }
 
-    var azimuth by remember { mutableFloatStateOf(0f) }
+    var rawAzimuth by remember { mutableFloatStateOf(0f) }
+    var smoothedAzimuth by remember { mutableFloatStateOf(0f) }
     var sensorAccuracy by remember { mutableIntStateOf(SensorManager.SENSOR_STATUS_ACCURACY_HIGH) }
     var hasCompassSensor by remember { mutableStateOf(true) }
     var hasVibratedAlignment by remember { mutableStateOf(false) }
+
+    // Helper to calculate shortest angular delta between angles (-180..180)
+    fun shortestAngleDiff(target: Float, current: Float): Float {
+        var diff = (target - current) % 360f
+        if (diff > 180f) diff -= 360f
+        if (diff < -180f) diff += 360f
+        return diff
+    }
 
     DisposableEffect(Unit) {
         val sm = context.getSystemService(Context.SENSOR_SERVICE) as? SensorManager
@@ -81,25 +88,42 @@ fun QiblaScreen(
             var hasMag = false
 
             override fun onSensorChanged(event: SensorEvent) {
+                var newDeg: Float? = null
+
                 if (event.sensor.type == Sensor.TYPE_ROTATION_VECTOR) {
                     SensorManager.getRotationMatrixFromVector(rotMatrix, event.values)
                     SensorManager.getOrientation(rotMatrix, orientation)
-                    val deg = Math.toDegrees(orientation[0].toDouble()).toFloat()
-                    azimuth = (deg + 360f) % 360f
+                    val rad = orientation[0].toDouble()
+                    newDeg = ((Math.toDegrees(rad) + 360.0) % 360.0).toFloat()
                 } else if (event.sensor.type == Sensor.TYPE_ACCELEROMETER) {
-                    System.arraycopy(event.values, 0, lastAccel, 0, 3)
+                    // Low pass on raw accel
+                    for (i in 0..2) {
+                        lastAccel[i] = lastAccel[i] + 0.2f * (event.values[i] - lastAccel[i])
+                    }
                     hasAccel = true
                 } else if (event.sensor.type == Sensor.TYPE_MAGNETIC_FIELD) {
-                    System.arraycopy(event.values, 0, lastMag, 0, 3)
+                    // Low pass on raw mag
+                    for (i in 0..2) {
+                        lastMag[i] = lastMag[i] + 0.2f * (event.values[i] - lastMag[i])
+                    }
                     hasMag = true
                 }
 
                 if (event.sensor.type != Sensor.TYPE_ROTATION_VECTOR && hasAccel && hasMag) {
                     if (SensorManager.getRotationMatrix(rotMatrix, null, lastAccel, lastMag)) {
                         SensorManager.getOrientation(rotMatrix, orientation)
-                        val deg = Math.toDegrees(orientation[0].toDouble()).toFloat()
-                        azimuth = (deg + 360f) % 360f
+                        val rad = orientation[0].toDouble()
+                        newDeg = ((Math.toDegrees(rad) + 360.0) % 360.0).toFloat()
                     }
+                }
+
+                newDeg?.let { deg ->
+                    rawAzimuth = deg
+                    // Smooth azimuth using exponential moving average along shortest angular path
+                    val diff = shortestAngleDiff(deg, smoothedAzimuth)
+                    // If diff is small, dampen noise to prevent micro-jitter
+                    val filterFactor = if (abs(diff) < 1.0f) 0.08f else 0.22f
+                    smoothedAzimuth = (smoothedAzimuth + diff * filterFactor + 360f) % 360f
                 }
             }
 
@@ -109,10 +133,10 @@ fun QiblaScreen(
         }
 
         if (rotationSensor != null) {
-            sm?.registerListener(listener, rotationSensor, SensorManager.SENSOR_DELAY_UI)
+            sm?.registerListener(listener, rotationSensor, SensorManager.SENSOR_DELAY_GAME)
         } else {
-            accelSensor?.let { sm?.registerListener(listener, it, SensorManager.SENSOR_DELAY_UI) }
-            magSensor?.let { sm?.registerListener(listener, it, SensorManager.SENSOR_DELAY_UI) }
+            accelSensor?.let { sm?.registerListener(listener, it, SensorManager.SENSOR_DELAY_GAME) }
+            magSensor?.let { sm?.registerListener(listener, it, SensorManager.SENSOR_DELAY_GAME) }
         }
 
         onDispose {
@@ -120,19 +144,28 @@ fun QiblaScreen(
         }
     }
 
-    // Relative needle angle to Kaaba
-    val relativeAngle = if (hasCompassSensor) {
-        (qiblaResult.qiblaAngle.toFloat() - azimuth + 360f) % 360f
+    // Relative angle: how much to rotate the needle from top so it points to Kaaba
+    val targetRelativeAngle = if (hasCompassSensor) {
+        val rawDiff = shortestAngleDiff(qiblaResult.qiblaAngle.toFloat(), smoothedAzimuth)
+        rawDiff
     } else {
         qiblaResult.qiblaAngle.toFloat()
     }
 
+    // Maintain unwrapped continuous angle to eliminate the 360-degree spinning glitch
+    var unwrappedNeedleAngle by remember { mutableFloatStateOf(0f) }
+    LaunchedEffect(targetRelativeAngle) {
+        val diff = shortestAngleDiff(targetRelativeAngle, unwrappedNeedleAngle)
+        unwrappedNeedleAngle += diff
+    }
+
     val animatedAngle by animateFloatAsState(
-        targetValue = relativeAngle,
-        animationSpec = spring(stiffness = 200f)
+        targetValue = unwrappedNeedleAngle,
+        animationSpec = spring(dampingRatio = 0.85f, stiffness = 160f)
     )
 
-    val isFacingQibla = abs(relativeAngle) < 3.5f || abs(relativeAngle - 360f) < 3.5f
+    // Accurate facing threshold: within +/- 4.5 degrees
+    val isFacingQibla = abs(shortestAngleDiff(qiblaResult.qiblaAngle.toFloat(), smoothedAzimuth)) <= 4.5f
 
     // Vibrate when exactly facing Qibla
     LaunchedEffect(isFacingQibla) {
@@ -141,9 +174,9 @@ fun QiblaScreen(
             try {
                 val v = context.getSystemService(Context.VIBRATOR_SERVICE) as? Vibrator
                 if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-                    v?.vibrate(VibrationEffect.createOneShot(80, VibrationEffect.DEFAULT_AMPLITUDE))
+                    v?.vibrate(VibrationEffect.createOneShot(70, VibrationEffect.DEFAULT_AMPLITUDE))
                 } else {
-                    v?.vibrate(80)
+                    v?.vibrate(70)
                 }
             } catch (_: Exception) {}
         } else if (!isFacingQibla) {
@@ -227,7 +260,7 @@ fun QiblaScreen(
             // Compass Dial View
             Box(
                 modifier = Modifier
-                    .size(280.dp)
+                    .size(290.dp)
                     .clip(CircleShape)
                     .background(
                         Brush.radialGradient(
@@ -250,7 +283,7 @@ fun QiblaScreen(
                     drawCompassCardinals()
                 }
 
-                // Rotating Needle Pointer
+                // Rotating Needle Pointer (Smoothly constrained without spinning loop)
                 Column(
                     modifier = Modifier
                         .fillMaxSize()
@@ -267,19 +300,19 @@ fun QiblaScreen(
                             Icons.Default.Navigation,
                             contentDescription = "اتجاه القبلة",
                             tint = if (isFacingQibla) IslamicGold else IslamicGreenPrimary,
-                            modifier = Modifier.size(44.dp)
+                            modifier = Modifier.size(46.dp)
                         )
                         Surface(
                             shape = RoundedCornerShape(8.dp),
                             color = if (isFacingQibla) IslamicGold else IslamicGreenPrimary
                         ) {
                             Text(
-                                text = "القبلة",
+                                text = "الكعبة المشرفة",
                                 style = MaterialTheme.typography.labelSmall,
                                 color = Color.White,
                                 fontFamily = CairoFontFamily,
                                 fontWeight = FontWeight.Bold,
-                                modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
+                                modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp)
                             )
                         }
                     }
@@ -299,7 +332,7 @@ fun QiblaScreen(
                     shape = CircleShape,
                     color = MaterialTheme.colorScheme.surface,
                     tonalElevation = 6.dp,
-                    modifier = Modifier.size(90.dp)
+                    modifier = Modifier.size(95.dp)
                 ) {
                     Column(
                         modifier = Modifier.fillMaxSize(),
@@ -318,13 +351,14 @@ fun QiblaScreen(
                             style = MaterialTheme.typography.labelSmall,
                             fontFamily = CairoFontFamily,
                             fontSize = 10.sp,
+                            fontWeight = if (isFacingQibla) FontWeight.Bold else FontWeight.Normal,
                             color = if (isFacingQibla) IslamicGreenPrimary else MaterialTheme.colorScheme.onSurfaceVariant
                         )
                     }
                 }
             }
 
-            // Bottom Diagnostics and Calibration Tips
+            // Diagnostics and Calibration Tips
             Column(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalAlignment = Alignment.CenterHorizontally
@@ -356,7 +390,7 @@ fun QiblaScreen(
                             Icon(Icons.Default.Refresh, contentDescription = "معايرة", tint = IslamicGold)
                             Spacer(modifier = Modifier.width(8.dp))
                             Text(
-                                text = "دقة البوصلة منخفضة. يرجى تحريك الهاتف في الهواء على شكل رقم 8 لمعايرة المستشعر والابتعاد عن المعادن.",
+                                text = "دقة المستشعر منخفضة. يرجى تحريك الهاتف في الهواء على شكل رقم 8 لمعايرة البوصلة والابتعاد عن المعادن.",
                                 style = MaterialTheme.typography.bodySmall,
                                 fontFamily = CairoFontFamily
                             )
@@ -364,7 +398,7 @@ fun QiblaScreen(
                     }
                 } else {
                     Text(
-                        text = "ضع الهاتف بشكل أفقي مستوٍ وابتعد عن الأجهزة الإلكترونية والمجالات المغناطيسية",
+                        text = "ضع الهاتف بشكل مستوٍ تماماً واجعله ثابتاً للإشارة بدقة للكعبة المشرفة",
                         style = MaterialTheme.typography.bodySmall,
                         fontFamily = CairoFontFamily,
                         color = MaterialTheme.colorScheme.outline,
@@ -378,9 +412,8 @@ fun QiblaScreen(
 
 private fun DrawScope.drawCompassCardinals() {
     val center = Offset(size.width / 2f, size.height / 2f)
-    val radius = size.width / 2f - 12f
+    val radius = size.width / 2f - 14f
 
-    // Draw ticks
     for (i in 0 until 360 step 30) {
         val angleRad = Math.toRadians(i.toDouble() - 90.0)
         val outerX = center.x + radius * kotlin.math.cos(angleRad).toFloat()
@@ -390,7 +423,7 @@ private fun DrawScope.drawCompassCardinals() {
         val innerY = center.y + (radius - tickLen) * kotlin.math.sin(angleRad).toFloat()
 
         drawLine(
-            color = Color.Gray.copy(alpha = 0.5f),
+            color = if (i == 0) Color.Red else Color.Gray.copy(alpha = 0.5f),
             start = Offset(innerX, innerY),
             end = Offset(outerX, outerY),
             strokeWidth = if (i % 90 == 0) 2.5f else 1.5f

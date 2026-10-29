@@ -92,6 +92,11 @@ class MainActivity : ComponentActivity() {
                 }
             }
 
+            val canGoBack = subScreen != SubScreen.NONE || selectedTab != NavigationTab.HOME
+            androidx.activity.compose.BackHandler(enabled = canGoBack) {
+                viewModel.handleBackPress()
+            }
+
             RafiqAlMuslimTheme(darkTheme = isDark) {
                 // Arabic RTL direction provider
                 CompositionLocalProvider(LocalLayoutDirection provides LayoutDirection.Rtl) {

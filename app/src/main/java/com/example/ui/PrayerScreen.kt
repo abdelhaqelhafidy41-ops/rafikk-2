@@ -53,6 +53,7 @@ fun PrayerScreen(
     var showMethodPickerSheet by remember { mutableStateOf(false) }
     var showHighLatSheet by remember { mutableStateOf(false) }
     var showAdjustDialog by remember { mutableStateOf(false) }
+    var showAnnualCalendar by remember { mutableStateOf(false) }
 
     // Location permission launcher
     val locationPermissionLauncher = rememberLauncherForActivityResult(
@@ -71,36 +72,83 @@ fun PrayerScreen(
     ) {
         // Top Header
         item {
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                Column {
-                    Text(
-                        text = "مواقيت الصلاة",
-                        style = MaterialTheme.typography.titleLarge,
-                        fontFamily = CairoFontFamily,
-                        fontWeight = FontWeight.Bold,
-                        color = MaterialTheme.colorScheme.primary
-                    )
-                    Text(
-                        text = todayHijri,
-                        style = MaterialTheme.typography.bodyMedium,
-                        fontFamily = CairoFontFamily,
-                        color = IslamicGold
-                    )
-                }
+            Column(modifier = Modifier.fillMaxWidth()) {
+                // Header Title & Hijri Date
+                Text(
+                    text = "مواقيت الصلاة",
+                    style = MaterialTheme.typography.headlineSmall,
+                    fontFamily = CairoFontFamily,
+                    fontWeight = FontWeight.Bold,
+                    color = MaterialTheme.colorScheme.primary
+                )
+                Text(
+                    text = todayHijri,
+                    style = MaterialTheme.typography.bodyMedium,
+                    fontFamily = CairoFontFamily,
+                    color = IslamicGold
+                )
 
-                // Qibla Button
-                FilledTonalButton(
-                    onClick = onOpenQibla,
-                    shape = RoundedCornerShape(12.dp),
-                    modifier = Modifier.testTag("btn_prayer_qibla")
+                Spacer(modifier = Modifier.height(12.dp))
+
+                // Action Buttons: Qibla & Annual Calendar (Balanced equal-width buttons)
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(10.dp)
                 ) {
-                    Icon(Icons.Default.Explore, contentDescription = "القبلة", modifier = Modifier.size(18.dp), tint = IslamicGreenPrimary)
-                    Spacer(modifier = Modifier.width(6.dp))
-                    Text("اتجاه القبلة", fontFamily = CairoFontFamily, fontWeight = FontWeight.Bold)
+                    // Qibla Button
+                    FilledTonalButton(
+                        onClick = onOpenQibla,
+                        shape = RoundedCornerShape(12.dp),
+                        colors = ButtonDefaults.filledTonalButtonColors(
+                            containerColor = IslamicGreenContainer,
+                            contentColor = IslamicGreenDark
+                        ),
+                        modifier = Modifier
+                            .weight(1f)
+                            .heightIn(min = 48.dp)
+                            .testTag("btn_prayer_qibla")
+                    ) {
+                        Icon(
+                            Icons.Default.Explore,
+                            contentDescription = "القبلة",
+                            modifier = Modifier.size(20.dp),
+                            tint = IslamicGreenPrimary
+                        )
+                        Spacer(modifier = Modifier.width(6.dp))
+                        Text(
+                            "اتجاه القبلة",
+                            fontFamily = CairoFontFamily,
+                            fontWeight = FontWeight.Bold,
+                            fontSize = 13.sp,
+                            maxLines = 1
+                        )
+                    }
+
+                    // Annual Calendar Button
+                    OutlinedButton(
+                        onClick = { showAnnualCalendar = true },
+                        shape = RoundedCornerShape(12.dp),
+                        border = androidx.compose.foundation.BorderStroke(1.dp, IslamicGold.copy(alpha = 0.7f)),
+                        modifier = Modifier
+                            .weight(1f)
+                            .heightIn(min = 48.dp)
+                            .testTag("btn_prayer_annual_calendar")
+                    ) {
+                        Icon(
+                            Icons.Default.CalendarMonth,
+                            contentDescription = "إمساكية ومواقيت العام",
+                            modifier = Modifier.size(20.dp),
+                            tint = IslamicGoldDark
+                        )
+                        Spacer(modifier = Modifier.width(6.dp))
+                        Text(
+                            "مواقيت العام",
+                            fontFamily = CairoFontFamily,
+                            fontWeight = FontWeight.Bold,
+                            fontSize = 13.sp,
+                            maxLines = 1
+                        )
+                    }
                 }
             }
             Spacer(modifier = Modifier.height(14.dp))
@@ -122,7 +170,10 @@ fun PrayerScreen(
                         horizontalArrangement = Arrangement.SpaceBetween,
                         verticalAlignment = Alignment.CenterVertically
                     ) {
-                        Row(verticalAlignment = Alignment.CenterVertically) {
+                        Row(
+                            modifier = Modifier.weight(1f).padding(end = 8.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
                             Icon(Icons.Default.LocationOn, contentDescription = "المدينة", tint = IslamicGreenPrimary)
                             Spacer(modifier = Modifier.width(8.dp))
                             Column {
@@ -130,13 +181,15 @@ fun PrayerScreen(
                                     text = settings.cityName,
                                     style = MaterialTheme.typography.titleMedium,
                                     fontFamily = CairoFontFamily,
-                                    fontWeight = FontWeight.Bold
+                                    fontWeight = FontWeight.Bold,
+                                    maxLines = 1
                                 )
                                 Text(
                                     text = "${settings.countryName} • ${if (settings.isManualLocation) "اختيار يدوي محفوظ" else "تحديد GPS"}",
                                     style = MaterialTheme.typography.bodySmall,
                                     fontFamily = CairoFontFamily,
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    maxLines = 1
                                 )
                             }
                         }
@@ -622,6 +675,17 @@ fun PrayerScreen(
                     Text("تم", fontFamily = CairoFontFamily)
                 }
             }
+        )
+    }
+
+    if (showAnnualCalendar) {
+        AnnualPrayerCalendarDialog(
+            cityName = settings.cityName,
+            latitude = settings.latitude,
+            longitude = settings.longitude,
+            calculationMethodName = settings.calculationMethod,
+            asrJuristicName = settings.asrJuristic,
+            onDismiss = { showAnnualCalendar = false }
         )
     }
 }

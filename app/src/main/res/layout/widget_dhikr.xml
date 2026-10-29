@@ -1,0 +1,61 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:id="@+id/widget_dhikr_root"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:background="@drawable/ic_launcher_background"
+    android:orientation="vertical"
+    android:padding="12dp">
+
+    <!-- Header -->
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:gravity="center_vertical"
+        android:orientation="horizontal">
+
+        <TextView
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:text="ذكر اليوم • رفيق المسلم"
+            android:textColor="#F3C649"
+            android:textSize="12sp"
+            android:textStyle="bold" />
+
+        <Button
+            android:id="@+id/widget_btn_next_dhikr"
+            android:layout_width="wrap_content"
+            android:layout_height="32dp"
+            android:background="#2E5C38"
+            android:paddingLeft="8dp"
+            android:paddingRight="8dp"
+            android:text="ذكر آخر ↻"
+            android:textColor="#FFFFFF"
+            android:textSize="10sp" />
+    </LinearLayout>
+
+    <!-- Dhikr Text -->
+    <TextView
+        android:id="@+id/widget_tv_dhikr_text"
+        android:layout_width="match_parent"
+        android:layout_height="0dp"
+        android:layout_marginTop="6dp"
+        android:layout_weight="1"
+        android:gravity="center"
+        android:text="سُبْحَانَ اللَّهِ وَبِحَمْدِهِ ، سُبْحَانَ اللَّهِ الْعَظِيمِ"
+        android:textColor="#FFFFFF"
+        android:textSize="14sp"
+        android:textStyle="bold" />
+
+    <!-- Source / Virtue -->
+    <TextView
+        android:id="@+id/widget_tv_dhikr_source"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:gravity="center"
+        android:text="كلمتان خفيفتان على اللسان ثقيلتان في الميزان"
+        android:textColor="#E0E0E0"
+        android:textSize="10sp" />
+
+</LinearLayout>
