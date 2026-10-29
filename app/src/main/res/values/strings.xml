@@ -1,0 +1,44 @@
+<resources>
+    <string name="app_name">رفيق المسلم</string>
+
+    <!-- Navigation -->
+    <string name="nav_home">الرئيسية</string>
+    <string name="nav_quran">القرآن الكريم</string>
+    <string name="nav_prayer">مواقيت الصلاة</string>
+    <string name="nav_adhkar">الأذكار</string>
+    <string name="nav_settings">الإعدادات</string>
+
+    <!-- Prayer Names -->
+    <string name="prayer_fajr">الفجر</string>
+    <string name="prayer_sunrise">الشروق</string>
+    <string name="prayer_dhuhr">الظهر</string>
+    <string name="prayer_asr">العصر</string>
+    <string name="prayer_maghrib">المغرب</string>
+    <string name="prayer_isha">العشاء</string>
+    <string name="next_prayer">الصلاة القادمة</string>
+    <string name="time_remaining">متبقي</string>
+
+    <!-- Reminders -->
+    <string name="reminders_title">التذكيرات والمنبهات</string>
+    <string name="reminders_quick_toggle">تفعيل التذكيرات</string>
+    <string name="add_reminder">إضافة تذكير جديد</string>
+    <string name="edit_reminder">تعديل التذكير</string>
+    <string name="snooze_reminder">تأجيل التذكير</string>
+    <string name="snooze_5_min">5 دقائق</string>
+    <string name="snooze_10_min">10 دقائق</string>
+    <string name="snooze_15_min">15 دقيقة</string>
+
+    <!-- Actions & Common -->
+    <string name="save">حفظ</string>
+    <string name="cancel">إلغاء</string>
+    <string name="delete">حذف</string>
+    <string name="search">بحث</string>
+    <string name="bookmark">إشارة مرجعية</string>
+    <string name="open_madina_quran">فتح في تطبيق مصحف المدينة</string>
+    <string name="open_madina_quran_desc">فتح المصحف المعتمد لمجمع الملك فهد</string>
+    <string name="play_store_open">تثبيت عبر متجر Google Play</string>
+
+    <!-- Privacy & Settings -->
+    <string name="privacy_title">الخصوصية والأمان</string>
+    <string name="privacy_summary">تطبيق رفيق المسلم يحترم خصوصيتك بالكامل. جميع بياناتك وإعداداتك وتذكيراتك مخزنة محليًا على جهازك فقط. الموقع الجغرافي يُستخدم لحساب أوقات الصلاة دون إرساله لأي جهة خارجية. لا نجمع أو نبيع أو نشارك أي بيانات شخصية.</string>
+</resources>

@@ -1,0 +1,752 @@
+package com.example.ui
+
+import android.app.Application
+import android.content.Context
+import android.media.AudioAttributes
+import android.media.AudioFocusRequest
+import android.media.AudioManager
+import android.media.MediaPlayer
+import android.media.PlaybackParams
+import android.net.Uri
+import android.os.Build
+import androidx.lifecycle.AndroidViewModel
+import androidx.lifecycle.viewModelScope
+import com.example.RafiqApplication
+import com.example.audio.AudioDownloadManager
+import com.example.data.adhkar.AdhkarData
+import com.example.data.adhkar.DailyInspiration
+import com.example.data.database.*
+import com.example.data.quran.AyahItem
+import com.example.data.quran.QuranData
+import com.example.data.quran.RecitersData
+import com.example.data.quran.SurahMeta
+import com.example.location.LocationFetchResult
+import com.example.location.LocationHelper
+import com.example.prayer.*
+import com.example.reminder.ReminderScheduler
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.flow.*
+import kotlinx.coroutines.launch
+import java.io.File
+import java.util.Calendar
+import java.util.TimeZone
+
+enum class NavigationTab(val titleAr: String) {
+    HOME("الرئيسية"),
+    QURAN("القرآن"),
+    PRAYER("المواقيت"),
+    ADHKAR("الأذكار"),
+    SETTINGS("الإعدادات")
+}
+
+enum class SubScreen {
+    NONE,
+    SURAH_READING,
+    TASBEEH,
+    PRIVACY,
+    QIBLA,
+    CITY_SELECTION,
+    AUDIO_DOWNLOADS
+}
+
+sealed class LocationDialogState {
+    object None : LocationDialogState()
+    object ExplanationRationale : LocationDialogState()
+    object GpsDisabled : LocationDialogState()
+    data class NoSignal(val fallbackLat: Double, val fallbackLng: Double) : LocationDialogState()
+}
+
+class MainViewModel(application: Application) : AndroidViewModel(application) {
+
+    private val repository: AppRepository = (application as RafiqApplication).repository
+    val downloadManager = AudioDownloadManager(application, repository)
+
+    private val _selectedTab = MutableStateFlow(NavigationTab.HOME)
+    val selectedTab: StateFlow<NavigationTab> = _selectedTab.asStateFlow()
+
+    private val _subScreen = MutableStateFlow(SubScreen.NONE)
+    val subScreen: StateFlow<SubScreen> = _subScreen.asStateFlow()
+
+    val settings: StateFlow<AppSettingsEntity> = repository.settings
+        .filterNotNull()
+        .stateIn(
+            scope = viewModelScope,
+            started = SharingStarted.WhileSubscribed(5000),
+            initialValue = AppSettingsEntity()
+        )
+
+    val reminders: StateFlow<List<ReminderEntity>> = repository.reminders
+        .stateIn(
+            scope = viewModelScope,
+            started = SharingStarted.WhileSubscribed(5000),
+            initialValue = emptyList()
+        )
+
+    val bookmarks: StateFlow<List<BookmarkEntity>> = repository.bookmarks
+        .stateIn(
+            scope = viewModelScope,
+            started = SharingStarted.WhileSubscribed(5000),
+            initialValue = emptyList()
+        )
+
+    val readingProgress: StateFlow<ReadingProgressEntity?> = repository.readingProgress
+        .stateIn(
+            scope = viewModelScope,
+            started = SharingStarted.WhileSubscribed(5000),
+            initialValue = null
+        )
+
+    val tasbeeh: StateFlow<TasbeehRecordEntity> = repository.tasbeeh
+        .filterNotNull()
+        .stateIn(
+            scope = viewModelScope,
+            started = SharingStarted.WhileSubscribed(5000),
+            initialValue = TasbeehRecordEntity()
+        )
+
+    private val _activeSurah = MutableStateFlow<SurahMeta?>(null)
+    val activeSurah: StateFlow<SurahMeta?> = _activeSurah.asStateFlow()
+
+    private val _activeAyahs = MutableStateFlow<List<AyahItem>>(emptyList())
+    val activeAyahs: StateFlow<List<AyahItem>> = _activeAyahs.asStateFlow()
+
+    private val _quranSearchQuery = MutableStateFlow("")
+    val quranSearchQuery: StateFlow<String> = _quranSearchQuery.asStateFlow()
+
+    val filteredSurahs: StateFlow<List<SurahMeta>> = _quranSearchQuery
+        .map { query -> QuranData.searchSurahs(query) }
+        .stateIn(
+            scope = viewModelScope,
+            started = SharingStarted.WhileSubscribed(5000),
+            initialValue = QuranData.allSurahs
+        )
+
+    private val _showReminderDialog = MutableStateFlow<ReminderEntity?>(null)
+    val showReminderDialog: StateFlow<ReminderEntity?> = _showReminderDialog.asStateFlow()
+
+    // Madinah Quran missing app dialog
+    private val _showMadinaQuranNotInstalled = MutableStateFlow(false)
+    val showMadinaQuranNotInstalled: StateFlow<Boolean> = _showMadinaQuranNotInstalled.asStateFlow()
+
+    // Location dialog state
+    private val _locationDialogState = MutableStateFlow<LocationDialogState>(LocationDialogState.None)
+    val locationDialogState: StateFlow<LocationDialogState> = _locationDialogState.asStateFlow()
+
+    private val _isGpsLoading = MutableStateFlow(false)
+    val isGpsLoading: StateFlow<Boolean> = _isGpsLoading.asStateFlow()
+
+    // Audio Player State
+    private val _isAudioPlaying = MutableStateFlow(false)
+    val isAudioPlaying: StateFlow<Boolean> = _isAudioPlaying.asStateFlow()
+
+    private val _playingAyahNumber = MutableStateFlow<Int?>(null)
+    val playingAyahNumber: StateFlow<Int?> = _playingAyahNumber.asStateFlow()
+
+    private val _isAudioLoading = MutableStateFlow(false)
+    val isAudioLoading: StateFlow<Boolean> = _isAudioLoading.asStateFlow()
+
+    private val _audioPlaybackProgress = MutableStateFlow(0f) // 0..1
+    val audioPlaybackProgress: StateFlow<Float> = _audioPlaybackProgress.asStateFlow()
+
+    private var mediaPlayer: MediaPlayer? = null
+    private var audioManager: AudioManager? = null
+    private var audioFocusRequest: AudioFocusRequest? = null
+
+    init {
+        audioManager = getApplication<Application>().getSystemService(Context.AUDIO_SERVICE) as? AudioManager
+    }
+
+    val todayHijri: StateFlow<String> = flow {
+        emit(HijriCalendarHelper.getTodayHijriString())
+    }.stateIn(
+        scope = viewModelScope,
+        started = SharingStarted.Eagerly,
+        initialValue = HijriCalendarHelper.getTodayHijriString()
+    )
+
+    private val _dailyInspiration = MutableStateFlow(AdhkarData.dailyInspirations.random())
+    val dailyInspiration: StateFlow<DailyInspiration> = _dailyInspiration.asStateFlow()
+
+    val prayerTimes: StateFlow<PrayerTimesResult> = settings.map { s ->
+        val method = try {
+            PrayerCalculator.CalculationMethod.valueOf(s.calculationMethod)
+        } catch (_: Exception) {
+            PrayerCalculator.CalculationMethod.UMM_AL_QURA
+        }
+        val juristic = try {
+            PrayerCalculator.AsrJuristic.valueOf(s.asrJuristic)
+        } catch (_: Exception) {
+            PrayerCalculator.AsrJuristic.SHAFI
+        }
+        val highLat = try {
+            PrayerCalculator.HighLatitudeRule.valueOf(s.highLatitudeRule)
+        } catch (_: Exception) {
+            PrayerCalculator.HighLatitudeRule.NONE
+        }
+
+        val cal = Calendar.getInstance()
+        if (s.timezoneId.isNotBlank()) {
+            try {
+                cal.timeZone = TimeZone.getTimeZone(s.timezoneId)
+            } catch (_: Exception) {}
+        }
+
+        PrayerCalculator.calculateTimes(
+            latitude = s.latitude,
+            longitude = s.longitude,
+            calendar = cal,
+            method = method,
+            asrJuristic = juristic,
+            highLatRule = highLat,
+            customFajrAngle = s.customFajrAngle,
+            customIshaAngle = s.customIshaAngle,
+            fajrAdj = s.fajrAdjustmentMinutes,
+            dhuhrAdj = s.dhuhrAdjustmentMinutes,
+            asrAdj = s.asrAdjustmentMinutes,
+            maghribAdj = s.maghribAdjustmentMinutes,
+            ishaAdj = s.ishaAdjustmentMinutes
+        )
+    }.stateIn(
+        scope = viewModelScope,
+        started = SharingStarted.WhileSubscribed(5000),
+        initialValue = PrayerCalculator.calculateTimes(21.4225, 39.8262)
+    )
+
+    // Navigation
+    fun selectTab(tab: NavigationTab) {
+        _selectedTab.value = tab
+        _subScreen.value = SubScreen.NONE
+    }
+
+    fun openSurah(surah: SurahMeta) {
+        stopAudio()
+        _activeSurah.value = surah
+        _activeAyahs.value = QuranData.getSurahAyahs(surah.number, settings.value.selectedReciterId, getApplication())
+        _subScreen.value = SubScreen.SURAH_READING
+    }
+
+    fun openTasbeeh() {
+        _subScreen.value = SubScreen.TASBEEH
+    }
+
+    fun openPrivacy() {
+        _subScreen.value = SubScreen.PRIVACY
+    }
+
+    fun openQibla() {
+        _subScreen.value = SubScreen.QIBLA
+    }
+
+    fun openCitySelection() {
+        _subScreen.value = SubScreen.CITY_SELECTION
+    }
+
+    fun openAudioDownloads() {
+        _subScreen.value = SubScreen.AUDIO_DOWNLOADS
+    }
+
+    fun closeSubScreen() {
+        stopAudio()
+        _subScreen.value = SubScreen.NONE
+    }
+
+    fun setQuranSearch(query: String) {
+        _quranSearchQuery.value = query
+    }
+
+    // Madinah Quran App Launch
+    fun onOpenMadinaQuranClicked(context: Context) {
+        when (QuranData.launchMadinaQuranApp(context)) {
+            QuranData.LaunchResult.OPENED -> {
+                _showMadinaQuranNotInstalled.value = false
+            }
+            QuranData.LaunchResult.NOT_INSTALLED -> {
+                _showMadinaQuranNotInstalled.value = true
+            }
+            QuranData.LaunchResult.FAILED -> {
+                QuranData.openMadinaQuranInPlayStore(context)
+            }
+        }
+    }
+
+    fun dismissMadinaQuranDialog() {
+        _showMadinaQuranNotInstalled.value = false
+    }
+
+    // Location & GPS Logic
+    fun onGpsButtonClicked(context: Context, hasPermission: Boolean) {
+        if (!hasPermission) {
+            _locationDialogState.value = LocationDialogState.ExplanationRationale
+        } else {
+            fetchGpsLocation(context)
+        }
+    }
+
+    fun dismissLocationDialog() {
+        _locationDialogState.value = LocationDialogState.None
+    }
+
+    fun fetchGpsLocation(context: Context) {
+        _isGpsLoading.value = true
+        _locationDialogState.value = LocationDialogState.None
+        viewModelScope.launch {
+            val result = LocationHelper.getCurrentLocationWithTimeout(
+                context = context,
+                fallbackLat = settings.value.latitude,
+                fallbackLng = settings.value.longitude,
+                timeoutMs = 8000L
+            )
+            _isGpsLoading.value = false
+            when (result) {
+                is LocationFetchResult.Success -> {
+                    repository.saveSettings(
+                        settings.value.copy(
+                            cityName = "موقعي الحالي (GPS)",
+                            countryName = "تحديد تلقائي دقيق",
+                            latitude = result.latitude,
+                            longitude = result.longitude,
+                            isManualLocation = false
+                        )
+                    )
+                }
+                is LocationFetchResult.GpsDisabled -> {
+                    _locationDialogState.value = LocationDialogState.GpsDisabled
+                }
+                is LocationFetchResult.NoSignal -> {
+                    _locationDialogState.value = LocationDialogState.NoSignal(result.fallbackLat, result.fallbackLng)
+                }
+                is LocationFetchResult.PermissionDenied -> {
+                    _locationDialogState.value = LocationDialogState.ExplanationRationale
+                }
+                is LocationFetchResult.Error -> {
+                    _locationDialogState.value = LocationDialogState.NoSignal(settings.value.latitude, settings.value.longitude)
+                }
+            }
+        }
+    }
+
+    fun updateCity(city: CityInfo) {
+        viewModelScope.launch(Dispatchers.IO) {
+            repository.saveSettings(
+                settings.value.copy(
+                    cityName = city.cityNameAr,
+                    countryName = city.countryNameAr,
+                    latitude = city.latitude,
+                    longitude = city.longitude,
+                    timezoneId = city.timezoneId,
+                    calculationMethod = city.defaultMethod.name,
+                    isManualLocation = true
+                )
+            )
+        }
+    }
+
+    fun saveCustomCoordinates(cityName: String, countryName: String, lat: Double, lng: Double, timezoneId: String) {
+        viewModelScope.launch(Dispatchers.IO) {
+            repository.saveSettings(
+                settings.value.copy(
+                    cityName = cityName,
+                    countryName = countryName,
+                    latitude = lat,
+                    longitude = lng,
+                    timezoneId = timezoneId,
+                    isManualLocation = true
+                )
+            )
+        }
+    }
+
+    fun updateCalculationMethod(method: PrayerCalculator.CalculationMethod) {
+        viewModelScope.launch(Dispatchers.IO) {
+            repository.saveSettings(settings.value.copy(calculationMethod = method.name))
+        }
+    }
+
+    fun updateAsrJuristic(juristic: PrayerCalculator.AsrJuristic) {
+        viewModelScope.launch(Dispatchers.IO) {
+            repository.saveSettings(settings.value.copy(asrJuristic = juristic.name))
+        }
+    }
+
+    fun updateHighLatitudeRule(rule: PrayerCalculator.HighLatitudeRule) {
+        viewModelScope.launch(Dispatchers.IO) {
+            repository.saveSettings(settings.value.copy(highLatitudeRule = rule.name))
+        }
+    }
+
+    fun updateCustomAngles(fajr: Double, isha: Double) {
+        viewModelScope.launch(Dispatchers.IO) {
+            repository.saveSettings(
+                settings.value.copy(
+                    calculationMethod = PrayerCalculator.CalculationMethod.CUSTOM.name,
+                    customFajrAngle = fajr,
+                    customIshaAngle = isha
+                )
+            )
+        }
+    }
+
+    fun updatePrayerAdjustment(prayerKey: String, diffMinutes: Int) {
+        viewModelScope.launch(Dispatchers.IO) {
+            val current = settings.value
+            val updated = when (prayerKey) {
+                "fajr" -> current.copy(fajrAdjustmentMinutes = (current.fajrAdjustmentMinutes + diffMinutes).coerceIn(-60, 60))
+                "dhuhr" -> current.copy(dhuhrAdjustmentMinutes = (current.dhuhrAdjustmentMinutes + diffMinutes).coerceIn(-60, 60))
+                "asr" -> current.copy(asrAdjustmentMinutes = (current.asrAdjustmentMinutes + diffMinutes).coerceIn(-60, 60))
+                "maghrib" -> current.copy(maghribAdjustmentMinutes = (current.maghribAdjustmentMinutes + diffMinutes).coerceIn(-60, 60))
+                "isha" -> current.copy(ishaAdjustmentMinutes = (current.ishaAdjustmentMinutes + diffMinutes).coerceIn(-60, 60))
+                else -> current
+            }
+            repository.saveSettings(updated)
+        }
+    }
+
+    fun updatePrePrayerAlert(enabled: Boolean, minutes: Int) {
+        viewModelScope.launch(Dispatchers.IO) {
+            repository.saveSettings(
+                settings.value.copy(
+                    prePrayerAlertEnabled = enabled,
+                    prePrayerAlertMinutes = minutes
+                )
+            )
+        }
+    }
+
+    fun updateThemeMode(mode: String) {
+        viewModelScope.launch(Dispatchers.IO) {
+            repository.saveSettings(settings.value.copy(themeMode = mode))
+        }
+    }
+
+    fun updateSelectedReciter(reciterId: String) {
+        viewModelScope.launch(Dispatchers.IO) {
+            repository.saveSettings(settings.value.copy(selectedReciterId = reciterId))
+            // Reload active ayahs with new reciter
+            _activeSurah.value?.let { surah ->
+                _activeAyahs.value = QuranData.getSurahAyahs(surah.number, reciterId, getApplication())
+            }
+        }
+    }
+
+    fun updateAudioSpeed(speed: Float) {
+        viewModelScope.launch(Dispatchers.IO) {
+            repository.saveSettings(settings.value.copy(audioSpeed = speed))
+        }
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+            try {
+                mediaPlayer?.playbackParams = mediaPlayer?.playbackParams?.setSpeed(speed) ?: PlaybackParams().setSpeed(speed)
+            } catch (_: Exception) {}
+        }
+    }
+
+    fun updateRepeatMode(mode: String) {
+        viewModelScope.launch(Dispatchers.IO) {
+            repository.saveSettings(settings.value.copy(repeatMode = mode))
+        }
+    }
+
+    fun toggleWifiOnlyDownloads(wifiOnly: Boolean) {
+        viewModelScope.launch(Dispatchers.IO) {
+            repository.saveSettings(settings.value.copy(downloadOverWifiOnly = wifiOnly))
+        }
+    }
+
+    // Reminders
+    fun openNewReminderDialog() {
+        _showReminderDialog.value = ReminderEntity(
+            id = 0,
+            title = "",
+            message = "",
+            type = "CUSTOM",
+            intervalMinutes = 30,
+            startHour = 8,
+            startMinute = 0,
+            endHour = 22,
+            endMinute = 0
+        )
+    }
+
+    fun openEditReminderDialog(reminder: ReminderEntity) {
+        _showReminderDialog.value = reminder
+    }
+
+    fun closeReminderDialog() {
+        _showReminderDialog.value = null
+    }
+
+    fun saveReminder(reminder: ReminderEntity) {
+        viewModelScope.launch(Dispatchers.IO) {
+            val id = repository.saveReminder(reminder)
+            val updated = reminder.copy(id = if (reminder.id == 0) id.toInt() else reminder.id)
+            ReminderScheduler.scheduleReminder(getApplication(), updated)
+        }
+        closeReminderDialog()
+    }
+
+    fun toggleReminder(id: Int, isEnabled: Boolean) {
+        viewModelScope.launch(Dispatchers.IO) {
+            repository.toggleReminder(id, isEnabled)
+            val reminder = repository.getReminderById(id)
+            if (reminder != null) {
+                ReminderScheduler.scheduleReminder(getApplication(), reminder.copy(isEnabled = isEnabled))
+            }
+        }
+    }
+
+    fun deleteReminder(reminder: ReminderEntity) {
+        viewModelScope.launch(Dispatchers.IO) {
+            repository.deleteReminder(reminder)
+            ReminderScheduler.cancelReminder(getApplication(), reminder.id)
+        }
+    }
+
+    fun toggleAllRemindersMuted() {
+        viewModelScope.launch(Dispatchers.IO) {
+            val current = settings.value.allRemindersMuted
+            repository.setAllRemindersMuted(!current)
+        }
+    }
+
+    // Bookmarks and Reading Progress
+    fun toggleBookmark(surahNumber: Int, surahName: String, ayahNumber: Int, ayahText: String) {
+        viewModelScope.launch(Dispatchers.IO) {
+            val existing = bookmarks.value.find { it.surahNumber == surahNumber && it.ayahNumber == ayahNumber }
+            if (existing != null) {
+                repository.removeBookmark(surahNumber, ayahNumber)
+            } else {
+                repository.addBookmark(surahNumber, surahName, ayahNumber, ayahText)
+            }
+        }
+    }
+
+    fun saveLastRead(surahNumber: Int, surahName: String, ayahNumber: Int) {
+        viewModelScope.launch(Dispatchers.IO) {
+            repository.saveReadingProgress(surahNumber, surahName, ayahNumber)
+        }
+    }
+
+    fun updateQuranFontSize(size: Int) {
+        viewModelScope.launch(Dispatchers.IO) {
+            repository.saveSettings(settings.value.copy(quranFontSize = size))
+        }
+    }
+
+    fun resetLocationSettings() {
+        viewModelScope.launch(Dispatchers.IO) {
+            repository.saveSettings(
+                settings.value.copy(
+                    cityName = "مكة المكرمة",
+                    countryName = "المملكة العربية السعودية",
+                    latitude = 21.4225,
+                    longitude = 39.8262,
+                    timezoneId = "Asia/Riyadh",
+                    calculationMethod = PrayerCalculator.CalculationMethod.UMM_AL_QURA.name,
+                    isManualLocation = true
+                )
+            )
+        }
+    }
+
+    fun clearAudioCache() {
+        downloadManager.deleteAllDownloads()
+    }
+
+    // Tasbeeh
+    fun incrementTasbeeh() {
+        val current = tasbeeh.value
+        val newCount = current.currentCount + 1
+        val newTotal = current.totalCount + 1
+        viewModelScope.launch(Dispatchers.IO) {
+            repository.updateTasbeeh(newCount, newTotal, current.dhikrText, current.targetCount)
+        }
+    }
+
+    fun resetTasbeeh() {
+        val current = tasbeeh.value
+        viewModelScope.launch(Dispatchers.IO) {
+            repository.updateTasbeeh(0, current.totalCount, current.dhikrText, current.targetCount)
+        }
+    }
+
+    fun setTasbeehPreset(text: String, target: Int = 33) {
+        val current = tasbeeh.value
+        viewModelScope.launch(Dispatchers.IO) {
+            repository.updateTasbeeh(0, current.totalCount, text, target)
+        }
+    }
+
+    // Audio Playback with Offline Fallback, Continuous Playback, and AudioFocus
+    fun playAyahAudio(ayah: AyahItem) {
+        stopAudio()
+        _isAudioLoading.value = true
+        _playingAyahNumber.value = ayah.ayahNumber
+
+        requestAudioFocus()
+
+        val reciterId = settings.value.selectedReciterId
+        val localFile = downloadManager.getLocalAyahFile(reciterId, ayah.surahNumber, ayah.ayahNumber)
+
+        try {
+            mediaPlayer = MediaPlayer().apply {
+                setAudioAttributes(
+                    AudioAttributes.Builder()
+                        .setContentType(AudioAttributes.CONTENT_TYPE_SPEECH)
+                        .setUsage(AudioAttributes.USAGE_MEDIA)
+                        .build()
+                )
+
+                if (localFile != null && localFile.exists()) {
+                    setDataSource(localFile.absolutePath)
+                } else {
+                    val url = ayah.audioUrl ?: RecitersData.getAyahAudioUrl(reciterId, ayah.surahNumber, ayah.ayahNumber)
+                    setDataSource(url)
+                }
+
+                setOnPreparedListener { mp ->
+                    _isAudioLoading.value = false
+                    _isAudioPlaying.value = true
+                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+                        try {
+                            mp.playbackParams = mp.playbackParams.setSpeed(settings.value.audioSpeed)
+                        } catch (_: Exception) {}
+                    }
+                    mp.start()
+                }
+
+                setOnCompletionListener {
+                    handleAyahCompletion(ayah)
+                }
+
+                setOnErrorListener { _, _, _ ->
+                    _isAudioLoading.value = false
+                    _isAudioPlaying.value = false
+                    _playingAyahNumber.value = null
+                    true
+                }
+
+                prepareAsync()
+            }
+        } catch (e: Exception) {
+            _isAudioLoading.value = false
+            _isAudioPlaying.value = false
+            _playingAyahNumber.value = null
+        }
+    }
+
+    private fun handleAyahCompletion(completedAyah: AyahItem) {
+        val mode = settings.value.repeatMode
+        if (mode == "ONE_AYAH") {
+            playAyahAudio(completedAyah)
+            return
+        }
+
+        val ayahs = _activeAyahs.value
+        val nextAyah = ayahs.find { it.ayahNumber == completedAyah.ayahNumber + 1 }
+        if (nextAyah != null) {
+            playAyahAudio(nextAyah)
+        } else {
+            // Surah ended
+            if (mode == "SURAH") {
+                ayahs.firstOrNull()?.let { playAyahAudio(it) }
+            } else if (settings.value.autoAdvanceSurah) {
+                val nextSurahNum = completedAyah.surahNumber + 1
+                if (nextSurahNum <= 114) {
+                    val nextSurah = QuranData.allSurahs.find { it.number == nextSurahNum }
+                    if (nextSurah != null) {
+                        openSurah(nextSurah)
+                        val nextSurahAyahs = QuranData.getSurahAyahs(nextSurahNum, settings.value.selectedReciterId, getApplication())
+                        nextSurahAyahs.firstOrNull()?.let { playAyahAudio(it) }
+                        return
+                    }
+                }
+                stopAudio()
+            } else {
+                stopAudio()
+            }
+        }
+    }
+
+    fun playNextAyah() {
+        val currentNum = _playingAyahNumber.value ?: return
+        val next = _activeAyahs.value.find { it.ayahNumber == currentNum + 1 }
+        if (next != null) {
+            playAyahAudio(next)
+        }
+    }
+
+    fun playPreviousAyah() {
+        val currentNum = _playingAyahNumber.value ?: return
+        val prev = _activeAyahs.value.find { it.ayahNumber == currentNum - 1 }
+        if (prev != null) {
+            playAyahAudio(prev)
+        }
+    }
+
+    fun pauseAudio() {
+        mediaPlayer?.let {
+            if (it.isPlaying) {
+                it.pause()
+                _isAudioPlaying.value = false
+            } else {
+                it.start()
+                _isAudioPlaying.value = true
+            }
+        }
+    }
+
+    fun stopAudio() {
+        try {
+            mediaPlayer?.stop()
+            mediaPlayer?.release()
+        } catch (_: Exception) {}
+        mediaPlayer = null
+        _isAudioPlaying.value = false
+        _playingAyahNumber.value = null
+        _isAudioLoading.value = false
+        abandonAudioFocus()
+    }
+
+    private fun requestAudioFocus() {
+        val am = audioManager ?: return
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            val req = AudioFocusRequest.Builder(AudioManager.AUDIOFOCUS_GAIN)
+                .setAudioAttributes(
+                    AudioAttributes.Builder()
+                        .setContentType(AudioAttributes.CONTENT_TYPE_SPEECH)
+                        .setUsage(AudioAttributes.USAGE_MEDIA)
+                        .build()
+                )
+                .setOnAudioFocusChangeListener { focusChange ->
+                    if (focusChange == AudioManager.AUDIOFOCUS_LOSS ||
+                        focusChange == AudioManager.AUDIOFOCUS_LOSS_TRANSIENT
+                    ) {
+                        pauseAudio()
+                    }
+                }
+                .build()
+            audioFocusRequest = req
+            am.requestAudioFocus(req)
+        } else {
+            @Suppress("DEPRECATION")
+            am.requestAudioFocus(
+                { focusChange ->
+                    if (focusChange == AudioManager.AUDIOFOCUS_LOSS) pauseAudio()
+                },
+                AudioManager.STREAM_MUSIC,
+                AudioManager.AUDIOFOCUS_GAIN
+            )
+        }
+    }
+
+    private fun abandonAudioFocus() {
+        val am = audioManager ?: return
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            audioFocusRequest?.let { am.abandonAudioFocusRequest(it) }
+        }
+    }
+
+    override fun onCleared() {
+        super.onCleared()
+        stopAudio()
+    }
+}

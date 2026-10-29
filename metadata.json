@@ -1,0 +1,8 @@
+{
+  "name": "Remix Rafik ",
+  "description": "Streamline and manage your project execution directly within your files with ease and efficiency.",
+  "requestFramePermissions": [],
+  "majorCapabilities": [
+    "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"
+  ]
+}
