@@ -22,10 +22,12 @@ import com.example.R
 import com.example.data.quran.QuranData
 import com.example.data.quran.RecitersData
 import kotlinx.coroutines.*
-import kotlinx.coroutines.flow.MutableStateFlow
-import kotlinx.coroutines.flow.StateFlow
-import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.*
+import android.net.ConnectivityManager
+import android.net.NetworkCapabilities
+import android.widget.Toast
 import java.io.File
+import java.io.FileInputStream
 
 object QuranAudioController {
     data class PlaybackState(
@@ -179,12 +181,34 @@ class QuranAudioService : Service(), AudioManager.OnAudioFocusChangeListener {
 
         serviceScope.launch(Dispatchers.IO) {
             try {
-                // Check offline local file
-                val localDir = File(filesDir, "audio_cache/$reciterId/$surahNumber")
-                val localFile = File(localDir, "${ayahNumber}.mp3")
+                // Find local file if available (downloaded surah or cached ayah)
+                val localFile = if (!explicitUrl.isNullOrEmpty() && (explicitUrl.startsWith("/") || explicitUrl.startsWith("file://"))) {
+                    val cleanPath = explicitUrl.removePrefix("file://")
+                    val f = File(cleanPath)
+                    if (f.exists() && f.length() > 512) f else findLocalAudioFile(reciterId, surahNumber, ayahNumber)
+                } else {
+                    findLocalAudioFile(reciterId, surahNumber, ayahNumber)
+                }
 
-                val finalDataSource = if (localFile.exists() && localFile.length() > 0) {
-                    localFile.absolutePath
+                val isLocal = localFile != null && localFile.exists() && localFile.length() > 512
+                val isOnline = isNetworkConnected()
+
+                if (!isLocal && !isOnline) {
+                    Log.w("QuranAudioService", "Offline: Surah $surahNumber Ayah $ayahNumber has not been downloaded.")
+                    withContext(Dispatchers.Main) {
+                        Toast.makeText(
+                            applicationContext,
+                            "هذه السورة غير محملة وتتطلب اتصالاً بالإنترنت للاستماع",
+                            Toast.LENGTH_LONG
+                        ).show()
+                        QuranAudioController.updateState { it.copy(isPlaying = false, isLoading = false) }
+                        updateNotification()
+                    }
+                    return@launch
+                }
+
+                val finalDataSource = if (isLocal) {
+                    localFile!!.absolutePath
                 } else {
                     explicitUrl ?: RecitersData.getAyahAudioUrl(reciterId, surahNumber, ayahNumber)
                 }
@@ -197,7 +221,14 @@ class QuranAudioService : Service(), AudioManager.OnAudioFocusChangeListener {
                                 .setUsage(AudioAttributes.USAGE_MEDIA)
                                 .build()
                         )
-                        setDataSource(finalDataSource)
+
+                        if (isLocal) {
+                            val fis = FileInputStream(File(finalDataSource))
+                            setDataSource(fis.fd)
+                            fis.close()
+                        } else {
+                            setDataSource(finalDataSource)
+                        }
 
                         setOnPreparedListener { mp ->
                             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
@@ -221,7 +252,8 @@ class QuranAudioService : Service(), AudioManager.OnAudioFocusChangeListener {
                             onCurrentAyahCompleted()
                         }
 
-                        setOnErrorListener { _, _, _ ->
+                        setOnErrorListener { _, what, extra ->
+                            Log.e("QuranAudioService", "MediaPlayer error: what=$what extra=$extra")
                             QuranAudioController.updateState { it.copy(isPlaying = false, isLoading = false) }
                             updateNotification()
                             true
@@ -230,12 +262,74 @@ class QuranAudioService : Service(), AudioManager.OnAudioFocusChangeListener {
                         prepareAsync()
                     }
                 }
-            } catch (_: Exception) {
+            } catch (e: Exception) {
+                Log.e("QuranAudioService", "playAyah failed: ${e.message}", e)
                 withContext(Dispatchers.Main) {
                     QuranAudioController.updateState { it.copy(isPlaying = false, isLoading = false) }
                     updateNotification()
                 }
             }
+        }
+    }
+
+    private fun findLocalAudioFile(reciterId: String, surahNumber: Int, ayahNumber: Int): File? {
+        // Priority 1: Primary path from AudioDownloadManager: filesDir/audio/$reciterId/${surahNumber}_${ayahNumber}.mp3
+        val path1 = File(filesDir, "audio/$reciterId/${surahNumber}_${ayahNumber}.mp3")
+        if (path1.exists() && path1.length() > 512) return path1
+
+        // Priority 2: Padded 3-digit everyAyah format: filesDir/audio/$reciterId/001001.mp3
+        val padSurah = surahNumber.toString().padStart(3, '0')
+        val padAyah = ayahNumber.toString().padStart(3, '0')
+        val path2 = File(filesDir, "audio/$reciterId/$padSurah$padAyah.mp3")
+        if (path2.exists() && path2.length() > 512) return path2
+
+        // Priority 3: Subdirectory format: filesDir/audio/$reciterId/$surahNumber/${ayahNumber}.mp3
+        val path3 = File(filesDir, "audio/$reciterId/$surahNumber/${ayahNumber}.mp3")
+        if (path3.exists() && path3.length() > 512) return path3
+
+        // Priority 4: Legacy cache paths
+        val path4 = File(filesDir, "audio_cache/$reciterId/$surahNumber/${ayahNumber}.mp3")
+        if (path4.exists() && path4.length() > 512) return path4
+
+        val path5 = File(filesDir, "audio_cache/$reciterId/${surahNumber}_${ayahNumber}.mp3")
+        if (path5.exists() && path5.length() > 512) return path5
+
+        // Priority 5: Fallback if downloaded under another reciter
+        val audioRoot = File(filesDir, "audio")
+        if (audioRoot.exists() && audioRoot.isDirectory) {
+            val reciterDirs = audioRoot.listFiles() ?: emptyArray()
+            for (dir in reciterDirs) {
+                if (dir.isDirectory) {
+                    val candidate = File(dir, "${surahNumber}_${ayahNumber}.mp3")
+                    if (candidate.exists() && candidate.length() > 512) {
+                        return candidate
+                    }
+                    val candidatePadded = File(dir, "$padSurah$padAyah.mp3")
+                    if (candidatePadded.exists() && candidatePadded.length() > 512) {
+                        return candidatePadded
+                    }
+                }
+            }
+        }
+
+        return null
+    }
+
+    private fun isNetworkConnected(): Boolean {
+        return try {
+            val cm = getSystemService(Context.CONNECTIVITY_SERVICE) as? ConnectivityManager ?: return false
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+                val network = cm.activeNetwork ?: return false
+                val capabilities = cm.getNetworkCapabilities(network) ?: return false
+                capabilities.hasCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET)
+            } else {
+                @Suppress("DEPRECATION")
+                val activeInfo = cm.activeNetworkInfo
+                @Suppress("DEPRECATION")
+                activeInfo != null && activeInfo.isConnected
+            }
+        } catch (_: Exception) {
+            true
         }
     }
 

@@ -586,11 +586,16 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
 
     // Background Audio Playback with Foreground Service and Notification controls
     fun playAyahAudio(ayah: AyahItem) {
+        val reciter = settings.value.selectedReciterId
+        val localFile = downloadManager.getLocalAyahFile(reciter, ayah.surahNumber, ayah.ayahNumber)
+        val audioUrl = localFile?.absolutePath ?: ayah.audioUrl
+
         QuranAudioService.startPlaying(
             context = getApplication(),
             surahNumber = ayah.surahNumber,
             ayahNumber = ayah.ayahNumber,
-            reciterId = settings.value.selectedReciterId,
+            reciterId = reciter,
+            audioUrl = audioUrl,
             speed = settings.value.audioSpeed
         )
     }

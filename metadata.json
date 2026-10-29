@@ -1,6 +1,6 @@
 {
-  "name": "Remix Rafik ",
-  "description": "Streamline and manage your project execution directly within your files with ease and efficiency.",
+  "name": "رفيق المسلم",
+  "description": "تطبيق إسلامي شامل: المصحف الشريف بتلاوات صوتية تعمل بدون إنترنت بعد التحميل، مواقيت الصلاة، الأذكار والأدعية والكتب السنية.",
   "requestFramePermissions": [],
   "majorCapabilities": [
     "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"

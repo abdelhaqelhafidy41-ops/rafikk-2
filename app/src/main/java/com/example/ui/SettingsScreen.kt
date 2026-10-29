@@ -496,7 +496,7 @@ fun SettingsScreen(
                 horizontalAlignment = Alignment.CenterHorizontally
             ) {
                 Text(
-                    text = "رفيق المسلم • الإصدار 1.1",
+                    text = "رفيق المسلم • الإصدار 1.0.1",
                     style = MaterialTheme.typography.bodySmall,
                     fontFamily = CairoFontFamily,
                     color = MaterialTheme.colorScheme.outline
