@@ -74,21 +74,23 @@ fun QiblaScreen(
         return diff
     }
 
-    var smoothedAzimuth by remember { mutableFloatStateOf(0f) }
+    var currentHeading by remember { mutableFloatStateOf(0f) }
     var sensorAccuracy by remember { mutableIntStateOf(SensorManager.SENSOR_STATUS_ACCURACY_HIGH) }
     var hasCompassSensor by remember { mutableStateOf(true) }
     var hasReceivedSensorEvent by remember { mutableStateOf(false) }
     var hasVibratedAlignment by remember { mutableStateOf(false) }
 
-    // Multi-sensor registration to prevent freezing on any Android device / chipset
-    DisposableEffect(Unit) {
+    // Prioritized single sensor registration to prevent event collision and animation freezing
+    DisposableEffect(context) {
         val sm = context.getSystemService(Context.SENSOR_SERVICE) as? SensorManager
         val rotationVectorSensor = sm?.getDefaultSensor(Sensor.TYPE_ROTATION_VECTOR)
-        val geomagVectorSensor = sm?.getDefaultSensor(Sensor.TYPE_GEOMAGNETIC_ROTATION_VECTOR)
-        val accelSensor = sm?.getDefaultSensor(Sensor.TYPE_ACCELEROMETER)
-        val magSensor = sm?.getDefaultSensor(Sensor.TYPE_MAGNETIC_FIELD)
-        @Suppress("DEPRECATION")
-        val orientationSensor = sm?.getDefaultSensor(Sensor.TYPE_ORIENTATION)
+        val geomagVectorSensor = if (rotationVectorSensor == null) sm?.getDefaultSensor(Sensor.TYPE_GEOMAGNETIC_ROTATION_VECTOR) else null
+        val accelSensor = if (rotationVectorSensor == null && geomagVectorSensor == null) sm?.getDefaultSensor(Sensor.TYPE_ACCELEROMETER) else null
+        val magSensor = if (rotationVectorSensor == null && geomagVectorSensor == null) sm?.getDefaultSensor(Sensor.TYPE_MAGNETIC_FIELD) else null
+        val orientationSensor = if (rotationVectorSensor == null && geomagVectorSensor == null && (accelSensor == null || magSensor == null)) {
+            @Suppress("DEPRECATION")
+            sm?.getDefaultSensor(Sensor.TYPE_ORIENTATION)
+        } else null
 
         if (rotationVectorSensor == null && geomagVectorSensor == null && (accelSensor == null || magSensor == null) && orientationSensor == null) {
             hasCompassSensor = false
@@ -96,15 +98,18 @@ fun QiblaScreen(
 
         val listener = object : SensorEventListener {
             val rotMatrix = FloatArray(9)
-            val outMatrix = FloatArray(9)
+            val remappedMatrix = FloatArray(9)
             val orientation = FloatArray(3)
             val lastAccel = FloatArray(3)
             val lastMag = FloatArray(3)
             var hasAccel = false
             var hasMag = false
+            var lastUpdateMs = 0L
 
             override fun onSensorChanged(event: SensorEvent) {
-                hasReceivedSensorEvent = true
+                val now = System.currentTimeMillis()
+                if (now - lastUpdateMs < 20L) return
+
                 var newDeg: Float? = null
 
                 when (event.sensor.type) {
@@ -116,20 +121,40 @@ fun QiblaScreen(
                                 event.values
                             }
                             SensorManager.getRotationMatrixFromVector(rotMatrix, vec)
-                            SensorManager.getOrientation(rotMatrix, orientation)
-                            // Remap if phone is tilted upright (> 45 degrees pitch)
-                            val pitch = orientation[1]
-                            if (abs(pitch) > 0.785f) {
-                                SensorManager.remapCoordinateSystem(
-                                    rotMatrix,
-                                    SensorManager.AXIS_X,
-                                    SensorManager.AXIS_Z,
-                                    outMatrix
-                                )
-                                SensorManager.getOrientation(outMatrix, orientation)
+
+                            @Suppress("DEPRECATION")
+                            val displayRotation = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+                                context.display?.rotation ?: android.view.Surface.ROTATION_0
+                            } else {
+                                (context.getSystemService(Context.WINDOW_SERVICE) as? android.view.WindowManager)?.defaultDisplay?.rotation ?: android.view.Surface.ROTATION_0
                             }
-                            val rad = orientation[0].toDouble()
-                            newDeg = ((Math.toDegrees(rad) + 360.0) % 360.0).toFloat()
+
+                            val (axisX, axisY) = when (displayRotation) {
+                                android.view.Surface.ROTATION_90 -> Pair(SensorManager.AXIS_Y, SensorManager.AXIS_MINUS_X)
+                                android.view.Surface.ROTATION_180 -> Pair(SensorManager.AXIS_MINUS_X, SensorManager.AXIS_MINUS_Y)
+                                android.view.Surface.ROTATION_270 -> Pair(SensorManager.AXIS_MINUS_Y, SensorManager.AXIS_X)
+                                else -> Pair(SensorManager.AXIS_X, SensorManager.AXIS_Y)
+                            }
+
+                            SensorManager.remapCoordinateSystem(rotMatrix, axisX, axisY, remappedMatrix)
+                            SensorManager.getOrientation(remappedMatrix, orientation)
+
+                            // If phone is tilted upright (> 45 degrees pitch), remap coordinates for upright view
+                            val pitch = orientation[1]
+                            val finalOrientation = if (abs(pitch) > 0.785f) {
+                                val uprightMatrix = FloatArray(9)
+                                SensorManager.remapCoordinateSystem(remappedMatrix, SensorManager.AXIS_X, SensorManager.AXIS_Z, uprightMatrix)
+                                val uprightOrient = FloatArray(3)
+                                SensorManager.getOrientation(uprightMatrix, uprightOrient)
+                                uprightOrient
+                            } else {
+                                orientation
+                            }
+
+                            val rad = finalOrientation[0].toDouble()
+                            if (!rad.isNaN() && !rad.isInfinite()) {
+                                newDeg = ((Math.toDegrees(rad) + 360.0) % 360.0).toFloat()
+                            }
                         } catch (_: Exception) {}
                     }
                     Sensor.TYPE_ACCELEROMETER -> {
@@ -146,35 +171,32 @@ fun QiblaScreen(
                     }
                     @Suppress("DEPRECATION")
                     Sensor.TYPE_ORIENTATION -> {
-                        newDeg = (event.values[0] + 360f) % 360f
+                        val d = (event.values[0] + 360f) % 360f
+                        if (!d.isNaN() && !d.isInfinite()) {
+                            newDeg = d
+                        }
                     }
                 }
 
-                // If rotation vector didn't provide a degree yet, compute from accel + mag
                 if (newDeg == null && hasAccel && hasMag) {
                     try {
                         if (SensorManager.getRotationMatrix(rotMatrix, null, lastAccel, lastMag)) {
                             SensorManager.getOrientation(rotMatrix, orientation)
-                            val pitch = orientation[1]
-                            if (abs(pitch) > 0.785f) {
-                                SensorManager.remapCoordinateSystem(
-                                    rotMatrix,
-                                    SensorManager.AXIS_X,
-                                    SensorManager.AXIS_Z,
-                                    outMatrix
-                                )
-                                SensorManager.getOrientation(outMatrix, orientation)
-                            }
                             val rad = orientation[0].toDouble()
-                            newDeg = ((Math.toDegrees(rad) + 360.0) % 360.0).toFloat()
+                            if (!rad.isNaN() && !rad.isInfinite()) {
+                                newDeg = ((Math.toDegrees(rad) + 360.0) % 360.0).toFloat()
+                            }
                         }
                     } catch (_: Exception) {}
                 }
 
                 newDeg?.let { deg ->
-                    val diff = shortestAngleDiff(deg, smoothedAzimuth)
-                    val factor = if (abs(diff) < 1.0f) 0.08f else 0.22f
-                    smoothedAzimuth = (smoothedAzimuth + diff * factor + 360f) % 360f
+                    hasReceivedSensorEvent = true
+                    lastUpdateMs = now
+                    val currentNorm = ((currentHeading % 360f) + 360f) % 360f
+                    val diff = shortestAngleDiff(deg, currentNorm)
+                    val factor = if (abs(diff) < 1.0f) 0.15f else 0.35f
+                    currentHeading += diff * factor
                 }
             }
 
@@ -183,19 +205,29 @@ fun QiblaScreen(
             }
         }
 
-        // Register all available sensors simultaneously for seamless fallback
-        rotationVectorSensor?.let { sm?.registerListener(listener, it, SensorManager.SENSOR_DELAY_UI) }
-        geomagVectorSensor?.let { sm?.registerListener(listener, it, SensorManager.SENSOR_DELAY_UI) }
-        accelSensor?.let { sm?.registerListener(listener, it, SensorManager.SENSOR_DELAY_UI) }
-        magSensor?.let { sm?.registerListener(listener, it, SensorManager.SENSOR_DELAY_UI) }
-        orientationSensor?.let { sm?.registerListener(listener, it, SensorManager.SENSOR_DELAY_UI) }
+        // Register ONLY the primary available sensor to avoid event thrashing
+        when {
+            rotationVectorSensor != null -> {
+                sm?.registerListener(listener, rotationVectorSensor, SensorManager.SENSOR_DELAY_GAME)
+            }
+            geomagVectorSensor != null -> {
+                sm?.registerListener(listener, geomagVectorSensor, SensorManager.SENSOR_DELAY_GAME)
+            }
+            accelSensor != null && magSensor != null -> {
+                sm?.registerListener(listener, accelSensor, SensorManager.SENSOR_DELAY_GAME)
+                sm?.registerListener(listener, magSensor, SensorManager.SENSOR_DELAY_GAME)
+            }
+            orientationSensor != null -> {
+                sm?.registerListener(listener, orientationSensor, SensorManager.SENSOR_DELAY_GAME)
+            }
+        }
 
         onDispose {
             sm?.unregisterListener(listener)
         }
     }
 
-    // Check if sensors are not emitting (e.g. streaming emulator) after 1.5 seconds
+    // Gracefully handle emulators or devices without sensors
     LaunchedEffect(Unit) {
         delay(1500)
         if (!hasReceivedSensorEvent) {
@@ -203,34 +235,18 @@ fun QiblaScreen(
         }
     }
 
-    // Relative angle: how much the needle needs to point from top towards Kaaba
-    val targetRelativeAngle = shortestAngleDiff(qiblaResult.qiblaAngle.toFloat(), smoothedAzimuth)
-
-    // Unwrapped continuous angles to prevent 360-degree spinning glitch
-    var unwrappedDialAngle by remember { mutableFloatStateOf(0f) }
-    LaunchedEffect(smoothedAzimuth) {
-        val targetDial = -smoothedAzimuth
-        val diff = shortestAngleDiff(targetDial, unwrappedDialAngle)
-        unwrappedDialAngle += diff
-    }
-    val animatedDialAngle by animateFloatAsState(
-        targetValue = unwrappedDialAngle,
+    // Spring animation for smooth 60fps/120fps rotation without any 360-degree glitches
+    val animatedHeading by animateFloatAsState(
+        targetValue = currentHeading,
         animationSpec = spring(dampingRatio = 0.85f, stiffness = 160f),
-        label = "dial_rotation"
+        label = "animated_heading"
     )
 
-    var unwrappedNeedleAngle by remember { mutableFloatStateOf(0f) }
-    LaunchedEffect(targetRelativeAngle) {
-        val diff = shortestAngleDiff(targetRelativeAngle, unwrappedNeedleAngle)
-        unwrappedNeedleAngle += diff
-    }
-    val animatedNeedleAngle by animateFloatAsState(
-        targetValue = unwrappedNeedleAngle,
-        animationSpec = spring(dampingRatio = 0.85f, stiffness = 160f),
-        label = "needle_rotation"
-    )
+    val dialRotation = -animatedHeading
+    val needleRotation = qiblaResult.qiblaAngle.toFloat() - animatedHeading
 
-    // Alignment threshold: within +/- 4.5 degrees of Qibla
+    val normalizedHeading = ((animatedHeading % 360f) + 360f) % 360f
+    val targetRelativeAngle = shortestAngleDiff(qiblaResult.qiblaAngle.toFloat(), normalizedHeading)
     val isFacingQibla = abs(targetRelativeAngle) <= 4.5f
 
     // Vibration on exact alignment
@@ -387,22 +403,20 @@ fun QiblaScreen(
                             color = glowColor,
                             shape = CircleShape
                         )
-                        .pointerInput(hasCompassSensor) {
-                            // Allows manual drag rotation if compass sensor is unavailable (e.g., emulator)
-                            if (!hasCompassSensor) {
-                                detectDragGestures { change, dragAmount ->
-                                    change.consume()
-                                    smoothedAzimuth = (smoothedAzimuth - dragAmount.x * 0.5f + 360f) % 360f
-                                }
+                        .pointerInput(Unit) {
+                            // Allows manual drag rotation for testing and interactive feedback
+                            detectDragGestures { change, dragAmount ->
+                                change.consume()
+                                currentHeading -= dragAmount.x * 0.45f
                             }
                         },
                     contentAlignment = Alignment.Center
                 ) {
-                    // Rotating Dial Canvas (Rotates with -smoothedAzimuth so North points to real physical North)
+                    // Rotating Dial Canvas (Rotates with -currentHeading so North points to real physical North)
                     Canvas(
                         modifier = Modifier
                             .fillMaxSize()
-                            .rotate(animatedDialAngle)
+                            .rotate(dialRotation)
                     ) {
                         drawCompassDial(
                             qiblaAngle = qiblaResult.qiblaAngle.toFloat(),
@@ -414,7 +428,7 @@ fun QiblaScreen(
                     Column(
                         modifier = Modifier
                             .fillMaxSize()
-                            .rotate(animatedNeedleAngle),
+                            .rotate(needleRotation),
                         horizontalAlignment = Alignment.CenterHorizontally,
                         verticalArrangement = Arrangement.SpaceBetween
                     ) {
@@ -470,7 +484,7 @@ fun QiblaScreen(
                             verticalArrangement = Arrangement.Center
                         ) {
                             Text(
-                                text = "${smoothedAzimuth.roundToInt()}°",
+                                text = "${normalizedHeading.roundToInt()}°",
                                 style = MaterialTheme.typography.titleMedium,
                                 fontFamily = CairoFontFamily,
                                 fontWeight = FontWeight.Bold,
@@ -485,6 +499,48 @@ fun QiblaScreen(
                                 color = if (isFacingQibla) IslamicGreenPrimary else MaterialTheme.colorScheme.onSurfaceVariant
                             )
                         }
+                    }
+                }
+
+                Spacer(modifier = Modifier.height(10.dp))
+                // Quick rotation and alignment action chips
+                Row(
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    FilledTonalButton(
+                        onClick = { currentHeading += 30f },
+                        contentPadding = PaddingValues(horizontal = 10.dp, vertical = 4.dp),
+                        modifier = Modifier.height(34.dp).testTag("btn_rotate_plus_30")
+                    ) {
+                        Icon(Icons.Default.RotateRight, contentDescription = null, modifier = Modifier.size(15.dp))
+                        Spacer(modifier = Modifier.width(4.dp))
+                        Text("+30°", fontSize = 11.sp, fontFamily = CairoFontFamily)
+                    }
+                    Button(
+                        onClick = {
+                            val currentNorm = ((currentHeading % 360f) + 360f) % 360f
+                            val diff = shortestAngleDiff(qiblaResult.qiblaAngle.toFloat(), currentNorm)
+                            currentHeading += diff
+                        },
+                        colors = ButtonDefaults.buttonColors(
+                            containerColor = if (isFacingQibla) IslamicGold else IslamicGreenPrimary
+                        ),
+                        contentPadding = PaddingValues(horizontal = 12.dp, vertical = 4.dp),
+                        modifier = Modifier.height(34.dp).testTag("btn_align_qibla")
+                    ) {
+                        Icon(Icons.Default.Place, contentDescription = null, modifier = Modifier.size(15.dp))
+                        Spacer(modifier = Modifier.width(4.dp))
+                        Text("توجيه تلقائي للقبلة", fontSize = 11.sp, fontFamily = CairoFontFamily, fontWeight = FontWeight.Bold)
+                    }
+                    FilledTonalButton(
+                        onClick = { currentHeading -= 30f },
+                        contentPadding = PaddingValues(horizontal = 10.dp, vertical = 4.dp),
+                        modifier = Modifier.height(34.dp).testTag("btn_rotate_minus_30")
+                    ) {
+                        Icon(Icons.Default.RotateLeft, contentDescription = null, modifier = Modifier.size(15.dp))
+                        Spacer(modifier = Modifier.width(4.dp))
+                        Text("-30°", fontSize = 11.sp, fontFamily = CairoFontFamily)
                     }
                 }
             }

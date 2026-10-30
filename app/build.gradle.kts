@@ -20,6 +20,7 @@ android {
     versionName = "1.0.1"
 
     testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
+    resourceConfigurations += listOf("ar", "en")
   }
 
   // Do not remove or modify these signingConfigs. They are necessary for building, installing,
@@ -43,7 +44,8 @@ android {
   buildTypes {
     release {
       isCrunchPngs = false
-      isMinifyEnabled = false
+      isMinifyEnabled = true
+      isShrinkResources = true
       proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
       // Do not remove or modify this signingConfig assignment. It is necessary for Android apps in
       // AI Studio.
@@ -62,6 +64,16 @@ android {
   buildFeatures {
     compose = true
     buildConfig = true
+  }
+  packaging {
+    resources {
+      excludes += listOf(
+        "/META-INF/{AL2.0,LGPL2.1}",
+        "/META-INF/INDEX.LIST",
+        "/META-INF/io.netty.versions.properties",
+        "/META-INF/DEPENDENCIES"
+      )
+    }
   }
   testOptions { unitTests { isIncludeAndroidResources = true } }
   dependenciesInfo {
