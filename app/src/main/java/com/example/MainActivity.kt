@@ -1,6 +1,7 @@
 package com.example
 
 import android.Manifest
+import android.content.Intent
 import android.os.Build
 import android.os.Bundle
 import androidx.activity.ComponentActivity
@@ -38,6 +39,7 @@ class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
+        handleWidgetNavigation(intent)
 
         setContent {
             val context = LocalContext.current
@@ -492,6 +494,29 @@ class MainActivity : ComponentActivity() {
                     }
                 }
             }
+        }
+    }
+
+    override fun onNewIntent(intent: Intent) {
+        super.onNewIntent(intent)
+        setIntent(intent)
+        handleWidgetNavigation(intent)
+    }
+
+    private fun handleWidgetNavigation(intent: Intent?) {
+        val target = intent?.getStringExtra("TARGET_SCREEN") ?: return
+        when (target) {
+            "PRAYER" -> viewModel.selectTab(NavigationTab.PRAYER)
+            "ADHKAR" -> viewModel.selectTab(NavigationTab.ADHKAR)
+            "QIBLA" -> {
+                viewModel.selectTab(NavigationTab.PRAYER)
+                viewModel.openQibla()
+            }
+            "TASBEEH" -> {
+                viewModel.selectTab(NavigationTab.ADHKAR)
+                viewModel.openTasbeeh()
+            }
+            "QURAN" -> viewModel.selectTab(NavigationTab.QURAN)
         }
     }
 }

@@ -3,11 +3,11 @@
     android:id="@+id/widget_dhikr_root"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
-    android:background="@drawable/ic_launcher_background"
+    android:background="@drawable/bg_widget_card"
     android:orientation="vertical"
-    android:padding="12dp">
+    android:padding="14dp">
 
-    <!-- Header -->
+    <!-- Header Row -->
     <LinearLayout
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
@@ -18,7 +18,7 @@
             android:layout_width="0dp"
             android:layout_height="wrap_content"
             android:layout_weight="1"
-            android:text="ذكر اليوم • رفيق المسلم"
+            android:text="✨ ذكر اليوم • رفيق المسلم"
             android:textColor="#F3C649"
             android:textSize="12sp"
             android:textStyle="bold" />
@@ -26,36 +26,38 @@
         <Button
             android:id="@+id/widget_btn_next_dhikr"
             android:layout_width="wrap_content"
-            android:layout_height="32dp"
-            android:background="#2E5C38"
-            android:paddingLeft="8dp"
-            android:paddingRight="8dp"
+            android:layout_height="34dp"
+            android:background="@drawable/bg_widget_button"
+            android:minHeight="0dp"
+            android:minWidth="0dp"
+            android:paddingHorizontal="12dp"
             android:text="ذكر آخر ↻"
             android:textColor="#FFFFFF"
-            android:textSize="10sp" />
+            android:textSize="11sp" />
     </LinearLayout>
 
-    <!-- Dhikr Text -->
+    <!-- Dhikr Text in Center -->
     <TextView
         android:id="@+id/widget_tv_dhikr_text"
         android:layout_width="match_parent"
         android:layout_height="0dp"
-        android:layout_marginTop="6dp"
+        android:layout_marginVertical="8dp"
         android:layout_weight="1"
         android:gravity="center"
+        android:lineSpacingExtra="3dp"
         android:text="سُبْحَانَ اللَّهِ وَبِحَمْدِهِ ، سُبْحَانَ اللَّهِ الْعَظِيمِ"
         android:textColor="#FFFFFF"
         android:textSize="14sp"
         android:textStyle="bold" />
 
-    <!-- Source / Virtue -->
+    <!-- Source / Reference -->
     <TextView
         android:id="@+id/widget_tv_dhikr_source"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
         android:gravity="center"
-        android:text="كلمتان خفيفتان على اللسان ثقيلتان في الميزان"
-        android:textColor="#E0E0E0"
-        android:textSize="10sp" />
+        android:text="سورة الرعد: 28 • آية كريمة"
+        android:textColor="#B2DFDB"
+        android:textSize="11sp" />
 
 </LinearLayout>

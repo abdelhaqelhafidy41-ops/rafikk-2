@@ -103,6 +103,32 @@
                 android:resource="@xml/widget_dhikr_info" />
         </receiver>
 
+        <!-- Qibla Compass Home Screen Widget -->
+        <receiver
+            android:name=".widget.QiblaAppWidgetProvider"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
+            </intent-filter>
+            <meta-data
+                android:name="android.appwidget.provider"
+                android:resource="@xml/widget_qibla_info" />
+        </receiver>
+
+        <!-- Tasbeeh and Adhkar Home Screen Widget -->
+        <receiver
+            android:name=".widget.TasbeehAppWidgetProvider"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
+                <action android:name="com.example.rafiqalmuslim.ACTION_INCREMENT_TASBEEH" />
+                <action android:name="com.example.rafiqalmuslim.ACTION_RESET_TASBEEH" />
+            </intent-filter>
+            <meta-data
+                android:name="android.appwidget.provider"
+                android:resource="@xml/widget_tasbeeh_info" />
+        </receiver>
+
     </application>
 
 </manifest>

@@ -26,6 +26,7 @@ import com.example.location.LocationFetchResult
 import com.example.location.LocationHelper
 import com.example.prayer.*
 import com.example.reminder.ReminderScheduler
+import com.example.widget.*
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.launch
@@ -312,15 +313,25 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             _isGpsLoading.value = false
             when (result) {
                 is LocationFetchResult.Success -> {
+                    val resolvedCity = result.cityName.ifBlank { "موقعي الحالي" }
+                    val resolvedCountry = result.countryName.ifBlank { "تحديد تلقائي" }
+                    val closest = LocationHelper.findClosestCity(result.latitude, result.longitude)
+                    val tz = closest?.timezoneId ?: TimeZone.getDefault().id
+                    val method = closest?.defaultMethod?.name ?: settings.value.calculationMethod
+
                     repository.saveSettings(
                         settings.value.copy(
-                            cityName = "موقعي الحالي (GPS)",
-                            countryName = "تحديد تلقائي دقيق",
+                            cityName = resolvedCity,
+                            countryName = resolvedCountry,
                             latitude = result.latitude,
                             longitude = result.longitude,
+                            timezoneId = tz,
+                            calculationMethod = method,
                             isManualLocation = false
                         )
                     )
+                    PrayerAppWidgetProvider.updateAllWidgets(getApplication())
+                    QiblaAppWidgetProvider.updateAllWidgets(getApplication())
                 }
                 is LocationFetchResult.GpsDisabled -> {
                     _locationDialogState.value = LocationDialogState.GpsDisabled
@@ -351,6 +362,8 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                     isManualLocation = true
                 )
             )
+            PrayerAppWidgetProvider.updateAllWidgets(getApplication())
+            QiblaAppWidgetProvider.updateAllWidgets(getApplication())
         }
     }
 
@@ -366,6 +379,8 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                     isManualLocation = true
                 )
             )
+            PrayerAppWidgetProvider.updateAllWidgets(getApplication())
+            QiblaAppWidgetProvider.updateAllWidgets(getApplication())
         }
     }
 
@@ -567,6 +582,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         val newTotal = current.totalCount + 1
         viewModelScope.launch(Dispatchers.IO) {
             repository.updateTasbeeh(newCount, newTotal, current.dhikrText, current.targetCount)
+            TasbeehAppWidgetProvider.updateAllWidgets(getApplication())
         }
     }
 
@@ -574,6 +590,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         val current = tasbeeh.value
         viewModelScope.launch(Dispatchers.IO) {
             repository.updateTasbeeh(0, current.totalCount, current.dhikrText, current.targetCount)
+            TasbeehAppWidgetProvider.updateAllWidgets(getApplication())
         }
     }
 
@@ -581,6 +598,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         val current = tasbeeh.value
         viewModelScope.launch(Dispatchers.IO) {
             repository.updateTasbeeh(0, current.totalCount, text, target)
+            TasbeehAppWidgetProvider.updateAllWidgets(getApplication())
         }
     }
 

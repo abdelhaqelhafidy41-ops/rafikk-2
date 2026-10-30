@@ -3,9 +3,9 @@
     android:id="@+id/widget_prayer_root"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
-    android:background="@drawable/ic_launcher_background"
+    android:background="@drawable/bg_widget_card"
     android:orientation="vertical"
-    android:padding="12dp">
+    android:padding="14dp">
 
     <!-- Header Row -->
     <LinearLayout
@@ -19,9 +19,9 @@
             android:layout_width="0dp"
             android:layout_height="wrap_content"
             android:layout_weight="1"
-            android:text="مكة المكرمة"
+            android:text="مواقيت الصلاة"
             android:textColor="#FFFFFF"
-            android:textSize="14sp"
+            android:textSize="13sp"
             android:textStyle="bold" />
 
         <TextView
@@ -30,35 +30,39 @@
             android:layout_height="wrap_content"
             android:text="١٤٤٨ هـ"
             android:textColor="#F3C649"
-            android:textSize="12sp" />
+            android:textSize="11sp"
+            android:textStyle="bold" />
     </LinearLayout>
 
     <!-- Next Prayer Card Banner -->
     <LinearLayout
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:layout_marginTop="6dp"
-        android:background="#2E5C38"
+        android:layout_marginTop="8dp"
+        android:background="@drawable/bg_widget_highlight"
         android:gravity="center"
         android:orientation="vertical"
-        android:padding="6dp">
+        android:paddingVertical="7dp"
+        android:paddingHorizontal="10dp">
 
         <TextView
             android:id="@+id/widget_tv_next_prayer"
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
-            android:text="الصلاة القادمة: الظهر ١٢:١٥ م"
+            android:text="الصلاة القادمة: الظهر 01:22 م"
             android:textColor="#FFFFFF"
-            android:textSize="13sp"
+            android:textSize="12sp"
             android:textStyle="bold" />
 
         <TextView
             android:id="@+id/widget_tv_remaining"
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
-            android:text="متبقي: ٤٥ دقيقة"
+            android:layout_marginTop="2dp"
+            android:text="متبقي: 1 س و 18 د"
             android:textColor="#F3C649"
-            android:textSize="11sp" />
+            android:textSize="11sp"
+            android:textStyle="bold" />
     </LinearLayout>
 
     <!-- Prayer Times Row -->
@@ -70,120 +74,150 @@
         android:orientation="horizontal"
         android:weightSum="5">
 
+        <!-- Fajr -->
         <LinearLayout
+            android:id="@+id/widget_box_fajr"
             android:layout_width="0dp"
             android:layout_height="wrap_content"
+            android:layout_marginHorizontal="2dp"
             android:layout_weight="1"
+            android:background="@drawable/bg_widget_prayer_item"
             android:gravity="center"
-            android:orientation="vertical">
+            android:orientation="vertical"
+            android:paddingVertical="5dp">
 
             <TextView
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
                 android:text="الفجر"
-                android:textColor="#E0E0E0"
-                android:textSize="11sp" />
+                android:textColor="#B2DFDB"
+                android:textSize="10sp" />
 
             <TextView
                 android:id="@+id/widget_tv_fajr"
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
+                android:layout_marginTop="2dp"
                 android:text="05:12"
                 android:textColor="#FFFFFF"
                 android:textSize="11sp"
                 android:textStyle="bold" />
         </LinearLayout>
 
+        <!-- Dhuhr -->
         <LinearLayout
+            android:id="@+id/widget_box_dhuhr"
             android:layout_width="0dp"
             android:layout_height="wrap_content"
+            android:layout_marginHorizontal="2dp"
             android:layout_weight="1"
+            android:background="@drawable/bg_widget_prayer_item"
             android:gravity="center"
-            android:orientation="vertical">
+            android:orientation="vertical"
+            android:paddingVertical="5dp">
 
             <TextView
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
                 android:text="الظهر"
-                android:textColor="#E0E0E0"
-                android:textSize="11sp" />
+                android:textColor="#B2DFDB"
+                android:textSize="10sp" />
 
             <TextView
                 android:id="@+id/widget_tv_dhuhr"
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
+                android:layout_marginTop="2dp"
                 android:text="12:15"
                 android:textColor="#FFFFFF"
                 android:textSize="11sp"
                 android:textStyle="bold" />
         </LinearLayout>
 
+        <!-- Asr -->
         <LinearLayout
+            android:id="@+id/widget_box_asr"
             android:layout_width="0dp"
             android:layout_height="wrap_content"
+            android:layout_marginHorizontal="2dp"
             android:layout_weight="1"
+            android:background="@drawable/bg_widget_prayer_item"
             android:gravity="center"
-            android:orientation="vertical">
+            android:orientation="vertical"
+            android:paddingVertical="5dp">
 
             <TextView
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
                 android:text="العصر"
-                android:textColor="#E0E0E0"
-                android:textSize="11sp" />
+                android:textColor="#B2DFDB"
+                android:textSize="10sp" />
 
             <TextView
                 android:id="@+id/widget_tv_asr"
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
+                android:layout_marginTop="2dp"
                 android:text="15:35"
                 android:textColor="#FFFFFF"
                 android:textSize="11sp"
                 android:textStyle="bold" />
         </LinearLayout>
 
+        <!-- Maghrib -->
         <LinearLayout
+            android:id="@+id/widget_box_maghrib"
             android:layout_width="0dp"
             android:layout_height="wrap_content"
+            android:layout_marginHorizontal="2dp"
             android:layout_weight="1"
+            android:background="@drawable/bg_widget_prayer_item"
             android:gravity="center"
-            android:orientation="vertical">
+            android:orientation="vertical"
+            android:paddingVertical="5dp">
 
             <TextView
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
                 android:text="المغرب"
-                android:textColor="#E0E0E0"
-                android:textSize="11sp" />
+                android:textColor="#B2DFDB"
+                android:textSize="10sp" />
 
             <TextView
                 android:id="@+id/widget_tv_maghrib"
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
+                android:layout_marginTop="2dp"
                 android:text="18:02"
-                android:textColor="#F3C649"
+                android:textColor="#FFFFFF"
                 android:textSize="11sp"
                 android:textStyle="bold" />
         </LinearLayout>
 
+        <!-- Isha -->
         <LinearLayout
+            android:id="@+id/widget_box_isha"
             android:layout_width="0dp"
             android:layout_height="wrap_content"
+            android:layout_marginHorizontal="2dp"
             android:layout_weight="1"
+            android:background="@drawable/bg_widget_prayer_item"
             android:gravity="center"
-            android:orientation="vertical">
+            android:orientation="vertical"
+            android:paddingVertical="5dp">
 
             <TextView
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
                 android:text="العشاء"
-                android:textColor="#E0E0E0"
-                android:textSize="11sp" />
+                android:textColor="#B2DFDB"
+                android:textSize="10sp" />
 
             <TextView
                 android:id="@+id/widget_tv_isha"
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
+                android:layout_marginTop="2dp"
                 android:text="19:32"
                 android:textColor="#FFFFFF"
                 android:textSize="11sp"

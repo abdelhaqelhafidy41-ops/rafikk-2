@@ -10,8 +10,12 @@ import android.os.Build
 import android.widget.RemoteViews
 import com.example.MainActivity
 import com.example.R
+import com.example.data.database.AppDatabase
 import com.example.prayer.HijriCalendarHelper
 import com.example.prayer.PrayerCalculator
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
 import java.util.Calendar
 
 class PrayerAppWidgetProvider : AppWidgetProvider() {
@@ -34,37 +38,59 @@ class PrayerAppWidgetProvider : AppWidgetProvider() {
         ) {
             val views = RemoteViews(context.packageName, R.layout.widget_prayer)
 
-            // Open app on tap
+            // Open app on tap to Prayer Tab
             val intent = Intent(context, MainActivity::class.java).apply {
                 flags = Intent.FLAG_ACTIVITY_SINGLE_TOP or Intent.FLAG_ACTIVITY_CLEAR_TOP
+                putExtra("TARGET_SCREEN", "PRAYER")
             }
             val flags = PendingIntent.FLAG_UPDATE_CURRENT or (if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) PendingIntent.FLAG_IMMUTABLE else 0)
-            val pendingIntent = PendingIntent.getActivity(context, 0, intent, flags)
+            val pendingIntent = PendingIntent.getActivity(context, 10, intent, flags)
             views.setOnClickPendingIntent(R.id.widget_prayer_root, pendingIntent)
 
-            try {
-                val cal = Calendar.getInstance()
-                // Default coordinates Makkah (or read from prefs if present)
-                val times = PrayerCalculator.calculateTimes(
-                    latitude = 21.4225,
-                    longitude = 39.8262,
-                    calendar = cal,
-                    method = PrayerCalculator.CalculationMethod.UMM_AL_QURA
-                )
+            CoroutineScope(Dispatchers.IO).launch {
+                try {
+                    val db = AppDatabase.getInstance(context)
+                    val settings = db.settingsDao().getSettingsSync()
+                    val lat = settings?.latitude ?: 21.4225
+                    val lng = settings?.longitude ?: 39.8262
+                    val city = settings?.cityName ?: "مكة المكرمة"
+                    val method = try {
+                        PrayerCalculator.CalculationMethod.valueOf(settings?.calculationMethod ?: "")
+                    } catch (_: Exception) {
+                        PrayerCalculator.CalculationMethod.UMM_AL_QURA
+                    }
 
-                views.setTextViewText(R.id.widget_tv_city, "مواقيت الصلاة")
-                views.setTextViewText(R.id.widget_tv_hijri, HijriCalendarHelper.getTodayHijriString())
-                views.setTextViewText(R.id.widget_tv_next_prayer, "القادمة: ${times.nextPrayerName} (${times.nextPrayerTime})")
-                views.setTextViewText(R.id.widget_tv_remaining, times.remainingFormatted)
+                    val cal = Calendar.getInstance()
+                    val times = PrayerCalculator.calculateTimes(
+                        latitude = lat,
+                        longitude = lng,
+                        calendar = cal,
+                        method = method
+                    )
 
-                views.setTextViewText(R.id.widget_tv_fajr, times.fajr)
-                views.setTextViewText(R.id.widget_tv_dhuhr, times.dhuhr)
-                views.setTextViewText(R.id.widget_tv_asr, times.asr)
-                views.setTextViewText(R.id.widget_tv_maghrib, times.maghrib)
-                views.setTextViewText(R.id.widget_tv_isha, times.isha)
-            } catch (_: Exception) {}
+                    views.setTextViewText(R.id.widget_tv_city, "🕌 $city")
+                    views.setTextViewText(R.id.widget_tv_hijri, HijriCalendarHelper.getTodayHijriString())
+                    views.setTextViewText(R.id.widget_tv_next_prayer, "الصلاة القادمة: ${times.nextPrayerName} (${times.nextPrayerTime})")
+                    views.setTextViewText(R.id.widget_tv_remaining, times.remainingFormatted)
 
-            appWidgetManager.updateAppWidget(appWidgetId, views)
+                    views.setTextViewText(R.id.widget_tv_fajr, times.fajr)
+                    views.setTextViewText(R.id.widget_tv_dhuhr, times.dhuhr)
+                    views.setTextViewText(R.id.widget_tv_asr, times.asr)
+                    views.setTextViewText(R.id.widget_tv_maghrib, times.maghrib)
+                    views.setTextViewText(R.id.widget_tv_isha, times.isha)
+
+                    // Highlight the next upcoming prayer box
+                    views.setInt(R.id.widget_box_fajr, "setBackgroundResource", if (times.nextPrayerName == "الفجر") R.drawable.bg_widget_prayer_active else R.drawable.bg_widget_prayer_item)
+                    views.setInt(R.id.widget_box_dhuhr, "setBackgroundResource", if (times.nextPrayerName == "الظهر") R.drawable.bg_widget_prayer_active else R.drawable.bg_widget_prayer_item)
+                    views.setInt(R.id.widget_box_asr, "setBackgroundResource", if (times.nextPrayerName == "العصر") R.drawable.bg_widget_prayer_active else R.drawable.bg_widget_prayer_item)
+                    views.setInt(R.id.widget_box_maghrib, "setBackgroundResource", if (times.nextPrayerName == "المغرب") R.drawable.bg_widget_prayer_active else R.drawable.bg_widget_prayer_item)
+                    views.setInt(R.id.widget_box_isha, "setBackgroundResource", if (times.nextPrayerName == "العشاء") R.drawable.bg_widget_prayer_active else R.drawable.bg_widget_prayer_item)
+
+                    appWidgetManager.updateAppWidget(appWidgetId, views)
+                } catch (_: Exception) {
+                    appWidgetManager.updateAppWidget(appWidgetId, views)
+                }
+            }
         }
 
         fun updateAllWidgets(context: Context) {

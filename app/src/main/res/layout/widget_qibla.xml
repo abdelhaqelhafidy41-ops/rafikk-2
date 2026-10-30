@@ -1,0 +1,81 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:id="@+id/widget_qibla_root"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:background="@drawable/bg_widget_card"
+    android:orientation="vertical"
+    android:padding="14dp">
+
+    <!-- Header Row -->
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:gravity="center_vertical"
+        android:orientation="horizontal">
+
+        <TextView
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:text="🕋 بوصلة القبلة المشرفة"
+            android:textColor="#F3C649"
+            android:textSize="13sp"
+            android:textStyle="bold" />
+
+        <TextView
+            android:id="@+id/widget_tv_qibla_distance"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:background="@drawable/bg_widget_highlight"
+            android:paddingHorizontal="8dp"
+            android:paddingVertical="3dp"
+            android:text="4850 كم إلى مكة"
+            android:textColor="#FFFFFF"
+            android:textSize="10sp"
+            android:textStyle="bold" />
+    </LinearLayout>
+
+    <!-- Center Qibla Direction Information -->
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="0dp"
+        android:layout_marginVertical="6dp"
+        android:layout_weight="1"
+        android:background="@drawable/bg_widget_highlight"
+        android:gravity="center"
+        android:orientation="vertical"
+        android:padding="8dp">
+
+        <TextView
+            android:id="@+id/widget_tv_qibla_angle"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="93° شرق"
+            android:textColor="#F3C649"
+            android:textSize="22sp"
+            android:textStyle="bold" />
+
+        <TextView
+            android:id="@+id/widget_tv_qibla_city"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="2dp"
+            android:text="موقعك: مكة المكرمة"
+            android:textColor="#B2DFDB"
+            android:textSize="11sp" />
+    </LinearLayout>
+
+    <!-- Action Prompt -->
+    <TextView
+        android:id="@+id/widget_btn_open_qibla"
+        android:layout_width="match_parent"
+        android:layout_height="32dp"
+        android:background="@drawable/bg_widget_button"
+        android:gravity="center"
+        android:text="فتح البوصلة وتحديد الاتجاه 🧭"
+        android:textColor="#FFFFFF"
+        android:textSize="11sp"
+        android:textStyle="bold" />
+
+</LinearLayout>
