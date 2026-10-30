@@ -21,6 +21,7 @@ import androidx.compose.ui.unit.sp
 import com.example.data.database.AppSettingsEntity
 import com.example.data.quran.QuranData
 import com.example.data.quran.RecitersData
+import com.example.friday.FridaySettingsDialog
 import com.example.ui.theme.*
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -40,10 +41,12 @@ fun SettingsScreen(
     onSelectReciter: (String) -> Unit,
     onResetLocationSettings: () -> Unit,
     onClearCache: () -> Unit,
+    onOpenFriday: () -> Unit = {},
     modifier: Modifier = Modifier
 ) {
     val context = LocalContext.current
     var showReciterSheet by remember { mutableStateOf(false) }
+    var showFridaySettingsDialog by remember { mutableStateOf(false) }
     val currentReciter = remember(settings.selectedReciterId) {
         RecitersData.getReciterById(settings.selectedReciterId)
     }
@@ -292,6 +295,69 @@ fun SettingsScreen(
                         Icon(Icons.Default.AddAlarm, contentDescription = "إضافة تذكير", modifier = Modifier.size(18.dp))
                         Spacer(modifier = Modifier.width(8.dp))
                         Text("إنشاء جدول تذكير مخصص جديد", fontFamily = CairoFontFamily)
+                    }
+                }
+            }
+            Spacer(modifier = Modifier.height(12.dp))
+        }
+
+        // Friday Settings & Reminders Card
+        item {
+            Card(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .testTag("card_friday_settings"),
+                shape = RoundedCornerShape(18.dp),
+                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)
+            ) {
+                Column(modifier = Modifier.padding(16.dp)) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Icon(Icons.Default.Event, contentDescription = "يوم الجمعة", tint = IslamicGreenPrimary)
+                        Spacer(modifier = Modifier.width(10.dp))
+                        Column {
+                            Text(
+                                text = "إعدادات وتذكيرات يوم الجمعة",
+                                style = MaterialTheme.typography.titleMedium,
+                                fontFamily = CairoFontFamily,
+                                fontWeight = FontWeight.Bold
+                            )
+                            Text(
+                                text = "تخصيص تنبيهات سورة الكهف، الصلاة على النبي ﷺ، وساعة الإجابة",
+                                style = MaterialTheme.typography.bodySmall,
+                                fontFamily = CairoFontFamily,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
+                    }
+
+                    Spacer(modifier = Modifier.height(12.dp))
+
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        Button(
+                            onClick = onOpenFriday,
+                            shape = RoundedCornerShape(12.dp),
+                            modifier = Modifier.weight(1f)
+                        ) {
+                            Icon(Icons.Default.MenuBook, contentDescription = "فتح", modifier = Modifier.size(16.dp))
+                            Spacer(modifier = Modifier.width(6.dp))
+                            Text("قسم الجمعة", fontFamily = CairoFontFamily, fontSize = 12.sp)
+                        }
+
+                        OutlinedButton(
+                            onClick = { showFridaySettingsDialog = true },
+                            shape = RoundedCornerShape(12.dp),
+                            modifier = Modifier.weight(1f)
+                        ) {
+                            Icon(Icons.Default.Tune, contentDescription = "تخصيص", modifier = Modifier.size(16.dp))
+                            Spacer(modifier = Modifier.width(6.dp))
+                            Text("تخصيص التنبيهات", fontFamily = CairoFontFamily, fontSize = 12.sp)
+                        }
                     }
                 }
             }
@@ -573,5 +639,11 @@ fun SettingsScreen(
                 }
             }
         }
+    }
+
+    if (showFridaySettingsDialog) {
+        FridaySettingsDialog(
+            onDismiss = { showFridaySettingsDialog = false }
+        )
     }
 }

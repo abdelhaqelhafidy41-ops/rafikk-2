@@ -32,6 +32,7 @@
 -keep class com.example.prayer.** { *; }
 -keep class com.example.audio.** { *; }
 -keep class com.example.widget.** { *; }
+-keep class com.example.friday.** { *; }
 
 # Keep Android App Widgets
 -keep class * extends android.appwidget.AppWidgetProvider { *; }

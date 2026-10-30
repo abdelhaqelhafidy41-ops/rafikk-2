@@ -52,6 +52,7 @@ fun HomeScreen(
     onNavigateToAdhkar: () -> Unit,
     onNavigateToQibla: () -> Unit,
     onOpenMadinaQuran: () -> Unit,
+    onNavigateToFriday: () -> Unit = {},
     modifier: Modifier = Modifier
 ) {
     val context = LocalContext.current
@@ -271,6 +272,97 @@ fun HomeScreen(
                             }
                         }
                     }
+                }
+            }
+        }
+
+        // Special Friday Section Card
+        item {
+            val isFriday = remember { com.example.friday.FridayPreferences.isTodayFriday() }
+            val isKahfRead = remember { com.example.friday.FridayPreferences.isKahfReadThisWeek(context) }
+            val salawatCount = remember { com.example.friday.FridayPreferences.getSalawatCount(context) }
+
+            Card(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 16.dp, vertical = 6.dp)
+                    .clickable { onNavigateToFriday() }
+                    .testTag("friday_section_card"),
+                shape = RoundedCornerShape(18.dp),
+                colors = CardDefaults.cardColors(
+                    containerColor = if (isFriday) IslamicGreenContainer else MaterialTheme.colorScheme.surface
+                ),
+                elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
+            ) {
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(16.dp),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        modifier = Modifier.weight(1f)
+                    ) {
+                        Surface(
+                            shape = CircleShape,
+                            color = if (isFriday) IslamicGold else IslamicGreenPrimary.copy(alpha = 0.15f),
+                            modifier = Modifier.size(46.dp)
+                        ) {
+                            Box(contentAlignment = Alignment.Center) {
+                                Text(
+                                    text = "🕌",
+                                    fontSize = 20.sp
+                                )
+                            }
+                        }
+                        Spacer(modifier = Modifier.width(12.dp))
+                        Column {
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Text(
+                                    text = if (isFriday) "يوم الجمعة المبارك" else "قسم يوم الجمعة",
+                                    style = MaterialTheme.typography.titleMedium,
+                                    fontFamily = CairoFontFamily,
+                                    fontWeight = FontWeight.Bold,
+                                    color = if (isFriday) IslamicGreenDark else MaterialTheme.colorScheme.onSurface
+                                )
+                                Spacer(modifier = Modifier.width(6.dp))
+                                if (isFriday) {
+                                    Surface(
+                                        shape = RoundedCornerShape(8.dp),
+                                        color = IslamicGoldContainer
+                                    ) {
+                                        Text(
+                                            text = "اليوم",
+                                            style = MaterialTheme.typography.labelSmall,
+                                            fontFamily = CairoFontFamily,
+                                            fontWeight = FontWeight.Bold,
+                                            color = IslamicGoldOnContainer,
+                                            modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
+                                        )
+                                    }
+                                }
+                            }
+                            Spacer(modifier = Modifier.height(2.dp))
+                            Text(
+                                text = if (isFriday) {
+                                    if (isKahfRead) "✓ سورة الكهف مقروءة • الصلاة على النبي: $salawatCount ﷺ" else "📖 تذكير سورة الكهف • سنن وأدعية الجمعة"
+                                } else {
+                                    "سنن وأذكار، سورة الكهف، وعداد الصلاة على النبي ﷺ"
+                                },
+                                style = MaterialTheme.typography.bodySmall,
+                                fontFamily = CairoFontFamily,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
+                    }
+
+                    Icon(
+                        Icons.Default.ArrowBack,
+                        contentDescription = "فتح قسم الجمعة",
+                        tint = if (isFriday) IslamicGreenPrimary else MaterialTheme.colorScheme.outline
+                    )
                 }
             }
         }

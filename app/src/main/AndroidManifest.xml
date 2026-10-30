@@ -129,6 +129,34 @@
                 android:resource="@xml/widget_tasbeeh_info" />
         </receiver>
 
+        <!-- Friday Home Screen Widget -->
+        <receiver
+            android:name=".widget.FridayAppWidgetProvider"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
+            </intent-filter>
+            <meta-data
+                android:name="android.appwidget.provider"
+                android:resource="@xml/widget_friday_info" />
+        </receiver>
+
+        <!-- Friday Reminder Receiver -->
+        <receiver
+            android:name=".friday.FridayAlarmReceiver"
+            android:exported="false" />
+
+        <!-- Friday Boot / Time Change Receiver -->
+        <receiver
+            android:name=".friday.FridayBootReceiver"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.intent.action.BOOT_COMPLETED" />
+                <action android:name="android.intent.action.TIME_SET" />
+                <action android:name="android.intent.action.TIMEZONE_CHANGED" />
+            </intent-filter>
+        </receiver>
+
     </application>
 
 </manifest>

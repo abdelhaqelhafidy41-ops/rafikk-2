@@ -49,7 +49,8 @@ enum class SubScreen {
     PRIVACY,
     QIBLA,
     CITY_SELECTION,
-    AUDIO_DOWNLOADS
+    AUDIO_DOWNLOADS,
+    FRIDAY
 }
 
 sealed class LocationDialogState {
@@ -257,6 +258,15 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
 
     fun openAudioDownloads() {
         _subScreen.value = SubScreen.AUDIO_DOWNLOADS
+    }
+
+    fun openFriday() {
+        _subScreen.value = SubScreen.FRIDAY
+    }
+
+    fun openSurahByNumber(surahNumber: Int) {
+        val meta = com.example.data.quran.QuranData.allSurahs.find { it.number == surahNumber } ?: return
+        openSurah(meta)
     }
 
     fun closeSubScreen() {

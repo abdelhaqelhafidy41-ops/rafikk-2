@@ -25,6 +25,8 @@ import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.example.data.quran.QuranData
+import com.example.friday.FridayReminderManager
+import com.example.friday.FridayScreen
 import com.example.location.LocationHelper
 import com.example.ui.*
 import com.example.ui.theme.CairoFontFamily
@@ -39,6 +41,7 @@ class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
+        FridayReminderManager.scheduleAllFridayReminders(this)
         handleWidgetNavigation(intent)
 
         setContent {
@@ -253,6 +256,17 @@ class MainActivity : ComponentActivity() {
                                         onBack = { viewModel.closeSubScreen() }
                                     )
                                 }
+                                SubScreen.FRIDAY -> {
+                                    FridayScreen(
+                                        onBack = { viewModel.closeSubScreen() },
+                                        onOpenKahf = { viewModel.openSurahByNumber(18) },
+                                        onPlayKahfAudio = {
+                                            viewModel.openSurahByNumber(18)
+                                            val ayahs = QuranData.getSurahAyahs(18, settings.selectedReciterId, this@MainActivity)
+                                            ayahs.firstOrNull()?.let { viewModel.playAyahAudio(it) }
+                                        }
+                                    )
+                                }
                                 SubScreen.TASBEEH, SubScreen.NONE -> {
                                     when (selectedTab) {
                                         NavigationTab.HOME -> {
@@ -271,6 +285,7 @@ class MainActivity : ComponentActivity() {
                                                 onNavigateToPrayer = { viewModel.selectTab(NavigationTab.PRAYER) },
                                                 onNavigateToAdhkar = { viewModel.selectTab(NavigationTab.ADHKAR) },
                                                 onNavigateToQibla = { viewModel.openQibla() },
+                                                onNavigateToFriday = { viewModel.openFriday() },
                                                 onOpenMadinaQuran = { viewModel.onOpenMadinaQuranClicked(context) }
                                             )
                                         }
@@ -325,7 +340,8 @@ class MainActivity : ComponentActivity() {
                                                 onOpenMadinaQuran = { viewModel.onOpenMadinaQuranClicked(context) },
                                                 onSelectReciter = { reciterId -> viewModel.updateSelectedReciter(reciterId) },
                                                 onResetLocationSettings = { viewModel.resetLocationSettings() },
-                                                onClearCache = { viewModel.clearAudioCache() }
+                                                onClearCache = { viewModel.clearAudioCache() },
+                                                onOpenFriday = { viewModel.openFriday() }
                                             )
                                         }
                                     }
@@ -517,6 +533,8 @@ class MainActivity : ComponentActivity() {
                 viewModel.openTasbeeh()
             }
             "QURAN" -> viewModel.selectTab(NavigationTab.QURAN)
+            "FRIDAY" -> viewModel.openFriday()
+            "KAHF" -> viewModel.openSurahByNumber(18)
         }
     }
 }
