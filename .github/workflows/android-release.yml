@@ -36,26 +36,36 @@ jobs:
       - name: Grant Execute Permission for Gradle Wrapper
         run: chmod +x gradlew
 
-      - name: Setup Environment and Keystore
+      - name: Setup Environment and Generate Release Keystore
         run: |
           # Ensure .env exists for Secrets Gradle plugin
           touch .env
           if [ -f .env.example ]; then
             cp .env.example .env
           fi
+
+          # إنشاء ملف release.keystore تلقائياً داخل الطرفية
+          KEYPASS="${{ secrets.RELEASE_KEY_PASSWORD }}"
+          STOREPASS="${{ secrets.RELEASE_STORE_PASSWORD }}"
           
-          # فك تشفير ملف keystore الخاص بالـ Release من متغير سري (Secrets)
-          if [ -n "${{ secrets.RELEASE_KEYSTORE_BASE64 }}" ]; then
-            echo "${{ secrets.RELEASE_KEYSTORE_BASE64 }}" | base64 -d > release.keystore
-            echo "release.keystore restored from base64"
-          fi
+          # استبدال القيم بقيم افتراضية في حال عدم ضبط الـ Secrets
+          if [ -z "$KEYPASS" ]; then KEYPASS="androidreleasepass"; fi
+          if [ -z "$STOREPASS" ]; then STOREPASS="androidreleasepass"; fi
+
+          echo "Generating Release Keystore inside terminal..."
+          keytool -genkey -v -keystore release.keystore \
+            -storepass "$STOREPASS" \
+            -alias releasekey \
+            -keypass "$KEYPASS" \
+            -keyalg RSA -keysize 2048 -validity 10000 \
+            -dname "CN=Release Build, O=Android, C=US"
 
       - name: Build Release APK
         env:
           RELEASE_STORE_FILE: release.keystore
-          RELEASE_STORE_PASSWORD: ${{ secrets.RELEASE_STORE_PASSWORD }}
-          RELEASE_KEY_ALIAS: ${{ secrets.RELEASE_KEY_ALIAS }}
-          RELEASE_KEY_PASSWORD: ${{ secrets.RELEASE_KEY_PASSWORD }}
+          RELEASE_STORE_PASSWORD: ${{ secrets.RELEASE_STORE_PASSWORD || 'androidreleasepass' }}
+          RELEASE_KEY_ALIAS: releasekey
+          RELEASE_KEY_PASSWORD: ${{ secrets.RELEASE_KEY_PASSWORD || 'androidreleasepass' }}
         run: ./gradlew assembleRelease --no-daemon --no-configuration-cache --stacktrace
 
       - name: Upload APK to GitHub Artifacts
@@ -73,3 +83,4 @@ jobs:
           generate_release_notes: true
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          
