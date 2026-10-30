@@ -66,14 +66,15 @@ jobs:
               -validity 10000 \
               -dname "CN=Rafiq Al-Muslim Release,O=AIStudio,C=SA"
           fi
+          cp my-upload-key.jks app/my-upload-key.jks 2>/dev/null || true
 
       - name: Build Optimized Release APK and App Bundle (AAB)
         env:
           STORE_PASSWORD: ${{ secrets.STORE_PASSWORD || 'android' }}
           KEY_PASSWORD: ${{ secrets.KEY_PASSWORD || 'android' }}
-          KEYSTORE_PATH: my-upload-key.jks
+          KEYSTORE_PATH: ${{ github.workspace }}/my-upload-key.jks
         run: |
-          ./gradlew assembleRelease bundleRelease --no-daemon --no-configuration-cache --stacktrace
+          ./gradlew assembleRelease bundleRelease --no-daemon --no-configuration-cache --no-build-cache --stacktrace
 
       - name: Upload Release APK to Artifacts
         uses: actions/upload-artifact@v4

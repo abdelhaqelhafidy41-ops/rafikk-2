@@ -54,7 +54,7 @@ jobs:
           fi
 
       - name: Build Debug APK
-        run: ./gradlew assembleDebug --no-daemon --no-configuration-cache --stacktrace
+        run: ./gradlew assembleDebug --no-daemon --no-configuration-cache --no-build-cache --stacktrace
 
       - name: Upload APK to GitHub Artifacts
         uses: actions/upload-artifact@v4
