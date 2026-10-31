@@ -269,6 +269,18 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         openSurah(meta)
     }
 
+    fun openSurahAndPlay(surahNumber: Int) {
+        val meta = com.example.data.quran.QuranData.allSurahs.find { it.number == surahNumber } ?: return
+        _activeSurah.value = meta
+        val ayahs = com.example.data.quran.QuranData.getSurahAyahs(surahNumber, settings.value.selectedReciterId, getApplication())
+        _activeAyahs.value = ayahs
+        _subScreen.value = SubScreen.SURAH_READING
+        val firstAyah = ayahs.firstOrNull()
+        if (firstAyah != null) {
+            playAyahAudio(firstAyah)
+        }
+    }
+
     fun closeSubScreen() {
         stopAudio()
         _subScreen.value = SubScreen.NONE
@@ -397,18 +409,21 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     fun updateCalculationMethod(method: PrayerCalculator.CalculationMethod) {
         viewModelScope.launch(Dispatchers.IO) {
             repository.saveSettings(settings.value.copy(calculationMethod = method.name))
+            PrayerAppWidgetProvider.updateAllWidgets(getApplication())
         }
     }
 
     fun updateAsrJuristic(juristic: PrayerCalculator.AsrJuristic) {
         viewModelScope.launch(Dispatchers.IO) {
             repository.saveSettings(settings.value.copy(asrJuristic = juristic.name))
+            PrayerAppWidgetProvider.updateAllWidgets(getApplication())
         }
     }
 
     fun updateHighLatitudeRule(rule: PrayerCalculator.HighLatitudeRule) {
         viewModelScope.launch(Dispatchers.IO) {
             repository.saveSettings(settings.value.copy(highLatitudeRule = rule.name))
+            PrayerAppWidgetProvider.updateAllWidgets(getApplication())
         }
     }
 
@@ -421,6 +436,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                     customIshaAngle = isha
                 )
             )
+            PrayerAppWidgetProvider.updateAllWidgets(getApplication())
         }
     }
 
@@ -436,6 +452,22 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                 else -> current
             }
             repository.saveSettings(updated)
+            PrayerAppWidgetProvider.updateAllWidgets(getApplication())
+        }
+    }
+
+    fun resetPrayerAdjustments() {
+        viewModelScope.launch(Dispatchers.IO) {
+            val current = settings.value
+            val updated = current.copy(
+                fajrAdjustmentMinutes = 0,
+                dhuhrAdjustmentMinutes = 0,
+                asrAdjustmentMinutes = 0,
+                maghribAdjustmentMinutes = 0,
+                ishaAdjustmentMinutes = 0
+            )
+            repository.saveSettings(updated)
+            PrayerAppWidgetProvider.updateAllWidgets(getApplication())
         }
     }
 

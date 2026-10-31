@@ -14,30 +14,72 @@ data class PrayerTimesResult(
     val nextPrayerName: String,
     val nextPrayerTime: String,
     val remainingMinutes: Long,
-    val remainingFormatted: String
+    val remainingFormatted: String,
+    val imsak: String = "",
+    val midnight: String = ""
 )
 
 object PrayerCalculator {
 
-    enum class CalculationMethod(val displayNameAr: String, val fajrAngle: Double, val ishaAngle: Double, val ishaFixedMinutes: Int = 0) {
-        UMM_AL_QURA("أم القرى (مكة المكرمة)", 18.5, 0.0, 90),
-        MWL("رابطة العالم الإسلامي", 18.0, 17.0),
-        EGYPTIAN("الهيئة المصرية العامة للمساحة", 19.5, 17.5),
-        KARACHI("جامعة العلوم الإسلامية بكراتشي", 18.0, 18.0),
-        ISNA("الجمعية الإسلامية لأمريكا الشمالية (ISNA)", 15.0, 15.0),
-        CUSTOM("طريقة مخصصة", 18.0, 17.0)
+    enum class CalculationMethod(
+        val displayNameAr: String,
+        val fajrAngle: Double,
+        val ishaAngle: Double,
+        val ishaFixedMinutes: Int = 0
+    ) {
+        UMM_AL_QURA("جامعة أم القرى (مكة المكرمة)", 18.5, 0.0, 90),
+        MOROCCO_HABOUS("وزارة الأوقاف والشؤون الإسلامية بالمملكة المغربية", 19.0, 17.0, 0),
+        MWL("رابطة العالم الإسلامي", 18.0, 17.0, 0),
+        EGYPTIAN("الهيئة المصرية العامة للمساحة", 19.5, 17.5, 0),
+        KARACHI("جامعة العلوم الإسلامية بكراتشي", 18.0, 18.0, 0),
+        ISNA("الجمعية الإسلامية لأمريكا الشمالية (ISNA)", 15.0, 15.0, 0),
+        FRANCE_UOIF("اتحاد المنظمات الإسلامية في فرنسا (UOIF)", 12.0, 12.0, 0),
+        CUSTOM("طريقة مخصصة", 18.0, 17.0, 0);
+
+        companion object {
+            fun fromString(name: String?): CalculationMethod {
+                if (name == null) return UMM_AL_QURA
+                return try {
+                    valueOf(name)
+                } catch (_: Exception) {
+                    UMM_AL_QURA
+                }
+            }
+        }
     }
 
     enum class AsrJuristic(val displayNameAr: String, val shadowMultiplier: Double) {
         SHAFI("الجمهور (الشافعي، المالكي، الحنبلي)", 1.0),
-        HANAFI("المذهب الحنفي", 2.0)
+        HANAFI("المذهب الحنفي", 2.0);
+
+        companion object {
+            fun fromString(name: String?): AsrJuristic {
+                if (name == null) return SHAFI
+                return try {
+                    valueOf(name)
+                } catch (_: Exception) {
+                    SHAFI
+                }
+            }
+        }
     }
 
     enum class HighLatitudeRule(val displayNameAr: String) {
-        NONE("بدون تعديل (المعادلة الفلكية القياسية)"),
+        NONE("بدون تعديل (المعادلة الفلكية القياسية مع حماية تلقائية)"),
         MIDNIGHT("منتصف الليل (نصف الفترة بين الغروب والشروق)"),
-        SEVENTH_NIGHT("سُبع الليل (١/٧ من الليل)"),
-        ANGLE_BASED("النسبة المئوية للزاوية (زاوية الفجر/٦٠)")
+        SEVENTH_NIGHT("سُبع الليل (١/٧ من طول الليل)"),
+        ANGLE_BASED("النسبة المئوية للزاوية (زاوية الفجر / ٦٠)");
+
+        companion object {
+            fun fromString(name: String?): HighLatitudeRule {
+                if (name == null) return NONE
+                return try {
+                    valueOf(name)
+                } catch (_: Exception) {
+                    NONE
+                }
+            }
+        }
     }
 
     fun calculateTimes(
@@ -83,7 +125,7 @@ object PrayerCalculator {
         val noonUtc = 12.0 - equationOfTime - (longitude / 15.0)
         val dhuhrHour = fixHour(noonUtc + timezoneOffsetHours)
 
-        // Sunrise & Sunset angle is 0.833 degrees below horizon
+        // Sunrise & Sunset angle is 0.833 degrees below horizon (sun semi-diameter + refraction)
         val sunAlt = -0.833
         val sunriseHour = dhuhrHour - hourAngle(sunAlt, latitude, declination)
         val sunsetHour = dhuhrHour + hourAngle(sunAlt, latitude, declination)
@@ -102,14 +144,20 @@ object PrayerCalculator {
         // Maghrib
         val maghribHour = sunsetHour
 
-        // Isha calculation
-        var ishaHour = if (method.ishaFixedMinutes > 0 && method != CalculationMethod.CUSTOM) {
-            maghribHour + (method.ishaFixedMinutes / 60.0)
+        // Isha calculation: for Umm Al-Qura, 90 mins normally, 120 mins in Ramadan
+        val isRamadan = HijriCalendarHelper.isRamadan(calendar)
+        val effectiveIshaFixedMinutes = when {
+            method == CalculationMethod.UMM_AL_QURA -> if (isRamadan) 120 else 90
+            else -> method.ishaFixedMinutes
+        }
+
+        var ishaHour = if (effectiveIshaFixedMinutes > 0 && method != CalculationMethod.CUSTOM) {
+            maghribHour + (effectiveIshaFixedMinutes / 60.0)
         } else {
             dhuhrHour + hourAngle(-iAngle, latitude, declination)
         }
 
-        // Apply High Latitude Adjustments if requested or if night is abnormal
+        // Apply High Latitude Adjustments if requested or if night is abnormal / polar twilight
         val nightDurationHours = (24.0 - sunsetHour + sunriseHour) % 24.0
         when (highLatRule) {
             HighLatitudeRule.MIDNIGHT -> {
@@ -129,9 +177,9 @@ object PrayerCalculator {
                 if (ishaHour > sunsetHour + ishaFrac || ishaHour.isNaN()) ishaHour = sunsetHour + ishaFrac
             }
             HighLatitudeRule.NONE -> {
-                // Fallback protection if NaN
-                if (fajrHour.isNaN()) fajrHour = sunriseHour - (nightDurationHours / 6.0)
-                if (ishaHour.isNaN()) ishaHour = sunsetHour + (nightDurationHours / 6.0)
+                // Built-in automatic safety fallback if NaN (polar regions/extreme latitudes)
+                if (fajrHour.isNaN()) fajrHour = sunriseHour - (nightDurationHours / 7.0)
+                if (ishaHour.isNaN()) ishaHour = sunsetHour + (nightDurationHours / 7.0)
             }
         }
 
@@ -143,9 +191,16 @@ object PrayerCalculator {
         val maghribMinutes = toTotalMinutes(maghribHour) + maghribAdj
         val ishaMinutes = toTotalMinutes(ishaHour) + ishaAdj
 
+        // Imsak: 10 minutes before Fajr
+        val imsakMinutes = (fajrMinutes - 10 + 24 * 60) % (24 * 60)
+
+        // Islamic Midnight: halfway between Maghrib and Fajr
+        val nightMins = ((fajrMinutes - maghribMinutes) % (24 * 60) + 24 * 60) % (24 * 60)
+        val midnightMinutes = (maghribMinutes + (nightMins / 2)) % (24 * 60)
+
         val currentMinutes = calendar.get(Calendar.HOUR_OF_DAY) * 60 + calendar.get(Calendar.MINUTE)
 
-        // Determine next prayer
+        // Determine next prayer among the five daily prayers + sunrise
         val prayerList = listOf(
             Triple("الفجر", fajrMinutes, formatMinutes(fajrMinutes)),
             Triple("الشروق", sunriseMinutes, formatMinutes(sunriseMinutes)),
@@ -183,7 +238,9 @@ object PrayerCalculator {
             nextPrayerName = nextPrayer.first,
             nextPrayerTime = nextPrayer.third,
             remainingMinutes = remainingMinutes,
-            remainingFormatted = remainingFormatted
+            remainingFormatted = remainingFormatted,
+            imsak = formatMinutes(imsakMinutes),
+            midnight = formatMinutes(midnightMinutes)
         )
     }
 

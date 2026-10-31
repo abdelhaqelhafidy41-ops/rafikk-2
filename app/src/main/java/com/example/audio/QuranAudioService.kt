@@ -124,6 +124,11 @@ class QuranAudioService : Service(), AudioManager.OnAudioFocusChangeListener {
         super.onCreate()
         audioManager = getSystemService(Context.AUDIO_SERVICE) as? AudioManager
         createNotificationChannel()
+        try {
+            startServiceInForeground(buildNotification(isLoading = true))
+        } catch (e: Throwable) {
+            Log.e("QuranAudioService", "Error in initial startForeground: ${e.message}", e)
+        }
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
@@ -439,7 +444,7 @@ class QuranAudioService : Service(), AudioManager.OnAudioFocusChangeListener {
         val playPauseIcon = if (s.isPlaying) android.R.drawable.ic_media_pause else android.R.drawable.ic_media_play
 
         val builder = NotificationCompat.Builder(this, CHANNEL_ID)
-            .setSmallIcon(android.R.drawable.ic_media_play)
+            .setSmallIcon(R.mipmap.ic_launcher)
             .setContentTitle(title)
             .setContentText(if (isLoading) "جاري تحميل التلاوة..." else subtitle)
             .setSubText("تلاوة القرآن الكريم")

@@ -22,12 +22,11 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.data.database.AppSettingsEntity
 import com.example.location.LocationHelper
-import com.example.prayer.CityCoordinates
-import com.example.prayer.CityInfo
 import com.example.prayer.PrayerCalculator
 import com.example.prayer.PrayerTimesResult
 import com.example.ui.theme.*
@@ -46,14 +45,19 @@ fun PrayerScreen(
     onSelectAsrJuristic: (PrayerCalculator.AsrJuristic) -> Unit,
     onSelectHighLatitudeRule: (PrayerCalculator.HighLatitudeRule) -> Unit,
     onAdjustPrayer: (String, Int) -> Unit,
+    onResetPrayerAdjustments: () -> Unit = {},
+    onUpdateCustomAngles: (Double, Double) -> Unit = { _, _ -> },
     onUpdatePrePrayerAlert: (Boolean, Int) -> Unit,
     modifier: Modifier = Modifier
 ) {
     val context = LocalContext.current
-    var showMethodPickerSheet by remember { mutableStateOf(false) }
-    var showHighLatSheet by remember { mutableStateOf(false) }
+    var showSettingsSheet by remember { mutableStateOf(false) }
     var showAdjustDialog by remember { mutableStateOf(false) }
     var showAnnualCalendar by remember { mutableStateOf(false) }
+
+    // Custom angle state for editing
+    var customFajrText by remember(settings.customFajrAngle) { mutableStateOf(settings.customFajrAngle.toString()) }
+    var customIshaText by remember(settings.customIshaAngle) { mutableStateOf(settings.customIshaAngle.toString()) }
 
     // Location permission launcher
     val locationPermissionLauncher = rememberLauncherForActivityResult(
@@ -62,6 +66,18 @@ fun PrayerScreen(
         val granted = permissions[Manifest.permission.ACCESS_FINE_LOCATION] == true ||
                 permissions[Manifest.permission.ACCESS_COARSE_LOCATION] == true
         onGpsClicked(granted)
+    }
+
+    val currentMethod = remember(settings.calculationMethod) {
+        PrayerCalculator.CalculationMethod.fromString(settings.calculationMethod)
+    }
+
+    val currentAsr = remember(settings.asrJuristic) {
+        PrayerCalculator.AsrJuristic.fromString(settings.asrJuristic)
+    }
+
+    val currentHighLat = remember(settings.highLatitudeRule) {
+        PrayerCalculator.HighLatitudeRule.fromString(settings.highLatitudeRule)
     }
 
     LazyColumn(
@@ -90,10 +106,10 @@ fun PrayerScreen(
 
                 Spacer(modifier = Modifier.height(12.dp))
 
-                // Action Buttons: Qibla & Annual Calendar (Balanced equal-width buttons)
+                // Action Buttons: Qibla & Annual Calendar & Prayer Settings
                 Row(
                     modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(10.dp)
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
                 ) {
                     // Qibla Button
                     FilledTonalButton(
@@ -111,15 +127,15 @@ fun PrayerScreen(
                         Icon(
                             Icons.Default.Explore,
                             contentDescription = "القبلة",
-                            modifier = Modifier.size(20.dp),
+                            modifier = Modifier.size(18.dp),
                             tint = IslamicGreenPrimary
                         )
-                        Spacer(modifier = Modifier.width(6.dp))
+                        Spacer(modifier = Modifier.width(4.dp))
                         Text(
-                            "اتجاه القبلة",
+                            "القبلة",
                             fontFamily = CairoFontFamily,
                             fontWeight = FontWeight.Bold,
-                            fontSize = 13.sp,
+                            fontSize = 12.sp,
                             maxLines = 1
                         )
                     }
@@ -136,16 +152,44 @@ fun PrayerScreen(
                     ) {
                         Icon(
                             Icons.Default.CalendarMonth,
-                            contentDescription = "إمساكية ومواقيت العام",
-                            modifier = Modifier.size(20.dp),
+                            contentDescription = "مواقيت العام",
+                            modifier = Modifier.size(18.dp),
                             tint = IslamicGoldDark
                         )
-                        Spacer(modifier = Modifier.width(6.dp))
+                        Spacer(modifier = Modifier.width(4.dp))
                         Text(
                             "مواقيت العام",
                             fontFamily = CairoFontFamily,
                             fontWeight = FontWeight.Bold,
-                            fontSize = 13.sp,
+                            fontSize = 12.sp,
+                            maxLines = 1
+                        )
+                    }
+
+                    // Prayer Settings Button (Prominent)
+                    Button(
+                        onClick = { showSettingsSheet = true },
+                        shape = RoundedCornerShape(12.dp),
+                        colors = ButtonDefaults.buttonColors(
+                            containerColor = IslamicGreenPrimary,
+                            contentColor = Color.White
+                        ),
+                        modifier = Modifier
+                            .weight(1.2f)
+                            .heightIn(min = 48.dp)
+                            .testTag("btn_prayer_settings")
+                    ) {
+                        Icon(
+                            Icons.Default.Tune,
+                            contentDescription = "إعدادات المواقيت",
+                            modifier = Modifier.size(18.dp)
+                        )
+                        Spacer(modifier = Modifier.width(4.dp))
+                        Text(
+                            "إعدادات المواقيت",
+                            fontFamily = CairoFontFamily,
+                            fontWeight = FontWeight.Bold,
+                            fontSize = 12.sp,
                             maxLines = 1
                         )
                     }
@@ -171,7 +215,9 @@ fun PrayerScreen(
                         verticalAlignment = Alignment.CenterVertically
                     ) {
                         Row(
-                            modifier = Modifier.weight(1f).padding(end = 8.dp),
+                            modifier = Modifier
+                                .weight(1f)
+                                .padding(end = 8.dp),
                             verticalAlignment = Alignment.CenterVertically
                         ) {
                             Icon(Icons.Default.LocationOn, contentDescription = "المدينة", tint = IslamicGreenPrimary)
@@ -184,8 +230,13 @@ fun PrayerScreen(
                                     fontWeight = FontWeight.Bold,
                                     maxLines = 1
                                 )
+                                val locationSourceLabel = if (settings.isManualLocation) {
+                                    "🗺️ اختيار يدوي"
+                                } else {
+                                    "📍 تحديد تلقائي GPS"
+                                }
                                 Text(
-                                    text = "${settings.countryName} • ${if (settings.isManualLocation) "اختيار يدوي محفوظ" else "تحديد GPS"}",
+                                    text = "${settings.countryName} • $locationSourceLabel",
                                     style = MaterialTheme.typography.bodySmall,
                                     fontFamily = CairoFontFamily,
                                     color = MaterialTheme.colorScheme.onSurfaceVariant,
@@ -205,14 +256,19 @@ fun PrayerScreen(
 
                     Spacer(modifier = Modifier.height(12.dp))
 
-                    // GPS auto fetch button (only triggered upon explicit user click!)
+                    // GPS auto fetch button (only triggered upon explicit user click)
                     OutlinedButton(
                         onClick = {
                             val hasPerm = LocationHelper.hasLocationPermission(context)
                             if (hasPerm) {
                                 onGpsClicked(true)
                             } else {
-                                onGpsClicked(false)
+                                locationPermissionLauncher.launch(
+                                    arrayOf(
+                                        Manifest.permission.ACCESS_FINE_LOCATION,
+                                        Manifest.permission.ACCESS_COARSE_LOCATION
+                                    )
+                                )
                             }
                         },
                         modifier = Modifier
@@ -257,7 +313,7 @@ fun PrayerScreen(
                         color = Color(0xFFD4E6DF),
                         fontFamily = CairoFontFamily
                     )
-                    Spacer(modifier = Modifier.height(6.dp))
+                    Spacer(modifier = Modifier.height(4.dp))
                     Text(
                         text = prayerTimes.nextPrayerName,
                         style = MaterialTheme.typography.displayMedium,
@@ -287,21 +343,45 @@ fun PrayerScreen(
                         fontFamily = CairoFontFamily,
                         fontWeight = FontWeight.SemiBold
                     )
+
+                    Spacer(modifier = Modifier.height(10.dp))
+
+                    // Calculation Method & Madhab Badge
+                    Surface(
+                        shape = RoundedCornerShape(8.dp),
+                        color = Color(0x33000000)
+                    ) {
+                        Text(
+                            text = "🕌 ${currentMethod.displayNameAr} • ${currentAsr.displayNameAr}",
+                            style = MaterialTheme.typography.labelSmall,
+                            color = Color(0xFFE2EFEA),
+                            fontFamily = CairoFontFamily,
+                            textAlign = TextAlign.Center,
+                            modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp),
+                            maxLines = 1
+                        )
+                    }
                 }
             }
             Spacer(modifier = Modifier.height(14.dp))
         }
 
-        // Daily Prayers List Card
+        // Daily Prayers List Card (Including Imsak & Midnight)
         item {
-            val prayerList = listOf(
-                Pair("صلاة الفجر", prayerTimes.fajr),
-                Pair("شروق الشمس", prayerTimes.sunrise),
-                Pair("صلاة الظهر", prayerTimes.dhuhr),
-                Pair("صلاة العصر", prayerTimes.asr),
-                Pair("صلاة المغرب", prayerTimes.maghrib),
-                Pair("صلاة العشاء", prayerTimes.isha)
-            )
+            val prayerList = buildList {
+                if (prayerTimes.imsak.isNotBlank()) {
+                    add(Triple("الإمساك", prayerTimes.imsak, "قبل الفجر بـ ١٠ دقائق"))
+                }
+                add(Triple("صلاة الفجر", prayerTimes.fajr, ""))
+                add(Triple("شروق الشمس", prayerTimes.sunrise, ""))
+                add(Triple("صلاة الظهر", prayerTimes.dhuhr, ""))
+                add(Triple("صلاة العصر", prayerTimes.asr, ""))
+                add(Triple("صلاة المغرب", prayerTimes.maghrib, ""))
+                add(Triple("صلاة العشاء", prayerTimes.isha, ""))
+                if (prayerTimes.midnight.isNotBlank()) {
+                    add(Triple("منتصف الليل الشرعي", prayerTimes.midnight, "نصف الليل بين الغروب والفجر"))
+                }
+            }
 
             Card(
                 modifier = Modifier
@@ -312,33 +392,52 @@ fun PrayerScreen(
                 elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
             ) {
                 Column(modifier = Modifier.padding(16.dp)) {
-                    Text(
-                        text = "جدول أوقات الصلاة اليوم",
-                        style = MaterialTheme.typography.titleMedium,
-                        fontFamily = CairoFontFamily,
-                        fontWeight = FontWeight.Bold,
-                        color = MaterialTheme.colorScheme.primary
-                    )
-                    Spacer(modifier = Modifier.height(12.dp))
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text(
+                            text = "جدول أوقات الصلاة اليوم",
+                            style = MaterialTheme.typography.titleMedium,
+                            fontFamily = CairoFontFamily,
+                            fontWeight = FontWeight.Bold,
+                            color = MaterialTheme.colorScheme.primary
+                        )
+                        IconButton(onClick = { showSettingsSheet = true }) {
+                            Icon(Icons.Default.Settings, contentDescription = "إعدادات", tint = IslamicGreenPrimary)
+                        }
+                    }
+                    Spacer(modifier = Modifier.height(8.dp))
 
-                    prayerList.forEachIndexed { index, (name, time) ->
+                    prayerList.forEachIndexed { index, (name, time, subtitle) ->
                         val isNext = prayerTimes.nextPrayerName in name
                         Row(
                             modifier = Modifier
                                 .fillMaxWidth()
                                 .clip(RoundedCornerShape(10.dp))
                                 .background(if (isNext) IslamicGoldContainer else Color.Transparent)
-                                .padding(horizontal = 12.dp, vertical = 10.dp),
+                                .padding(horizontal = 12.dp, vertical = 8.dp),
                             horizontalArrangement = Arrangement.SpaceBetween,
                             verticalAlignment = Alignment.CenterVertically
                         ) {
-                            Text(
-                                text = name,
-                                style = MaterialTheme.typography.bodyLarge,
-                                fontFamily = CairoFontFamily,
-                                fontWeight = if (isNext) FontWeight.Bold else FontWeight.Normal,
-                                color = if (isNext) IslamicGoldOnContainer else MaterialTheme.colorScheme.onSurface
-                            )
+                            Column {
+                                Text(
+                                    text = name,
+                                    style = MaterialTheme.typography.bodyLarge,
+                                    fontFamily = CairoFontFamily,
+                                    fontWeight = if (isNext) FontWeight.Bold else FontWeight.Medium,
+                                    color = if (isNext) IslamicGoldOnContainer else MaterialTheme.colorScheme.onSurface
+                                )
+                                if (subtitle.isNotBlank()) {
+                                    Text(
+                                        text = subtitle,
+                                        style = MaterialTheme.typography.labelSmall,
+                                        fontFamily = CairoFontFamily,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                                    )
+                                }
+                            }
                             Text(
                                 text = time,
                                 style = MaterialTheme.typography.bodyLarge,
@@ -348,7 +447,7 @@ fun PrayerScreen(
                             )
                         }
                         if (index < prayerList.size - 1) {
-                            Divider(color = MaterialTheme.colorScheme.outline.copy(alpha = 0.2f))
+                            HorizontalDivider(color = MaterialTheme.colorScheme.outline.copy(alpha = 0.15f))
                         }
                     }
                 }
@@ -356,7 +455,7 @@ fun PrayerScreen(
             Spacer(modifier = Modifier.height(14.dp))
         }
 
-        // Calculation Method, High Latitudes, & Adjustments
+        // Active Settings Summary Card
         item {
             Card(
                 modifier = Modifier
@@ -367,112 +466,78 @@ fun PrayerScreen(
                 elevation = CardDefaults.cardElevation(defaultElevation = 1.dp)
             ) {
                 Column(modifier = Modifier.padding(16.dp)) {
-                    Text(
-                        text = "طريقة الحساب والضبط الشرعي",
-                        style = MaterialTheme.typography.titleMedium,
-                        fontFamily = CairoFontFamily,
-                        fontWeight = FontWeight.Bold
-                    )
-                    Spacer(modifier = Modifier.height(10.dp))
-
-                    // Method selector
                     Row(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .clickable { showMethodPickerSheet = true }
-                            .padding(vertical = 8.dp),
+                        modifier = Modifier.fillMaxWidth(),
                         horizontalArrangement = Arrangement.SpaceBetween,
                         verticalAlignment = Alignment.CenterVertically
                     ) {
-                        Column(modifier = Modifier.weight(1f)) {
-                            Text("طريقة الحساب الفلكية:", style = MaterialTheme.typography.labelMedium, fontFamily = CairoFontFamily)
-                            val currentMethod = try {
-                                PrayerCalculator.CalculationMethod.valueOf(settings.calculationMethod).displayNameAr
-                            } catch (_: Exception) {
-                                "أم القرى"
-                            }
-                            Text(currentMethod, style = MaterialTheme.typography.bodyMedium, fontFamily = CairoFontFamily, fontWeight = FontWeight.Bold, color = IslamicGreenPrimary)
+                        Text(
+                            text = "طريقة الحساب والضبط الشرعي",
+                            style = MaterialTheme.typography.titleMedium,
+                            fontFamily = CairoFontFamily,
+                            fontWeight = FontWeight.Bold
+                        )
+                        TextButton(onClick = { showSettingsSheet = true }) {
+                            Text("تعديل", fontFamily = CairoFontFamily)
                         }
-                        Icon(Icons.Default.ArrowBackIosNew, contentDescription = "تغيير", modifier = Modifier.size(16.dp))
                     }
+                    Spacer(modifier = Modifier.height(6.dp))
 
-                    Divider(color = MaterialTheme.colorScheme.outline.copy(alpha = 0.2f), modifier = Modifier.padding(vertical = 4.dp))
-
-                    // Asr Juristic Method
                     Row(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(vertical = 8.dp),
-                        horizontalArrangement = Arrangement.SpaceBetween,
-                        verticalAlignment = Alignment.CenterVertically
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween
                     ) {
                         Column {
-                            Text("حساب وقت العصر:", style = MaterialTheme.typography.labelMedium, fontFamily = CairoFontFamily)
-                            Text(
-                                if (settings.asrJuristic == "HANAFI") "المذهب الحنفي" else "الجمهور (الشافعي، المالكي، الحنبلي)",
-                                style = MaterialTheme.typography.bodyMedium,
-                                fontFamily = CairoFontFamily,
-                                fontWeight = FontWeight.Bold
-                            )
+                            Text("الطريقة المعتمدة:", style = MaterialTheme.typography.labelMedium, fontFamily = CairoFontFamily)
+                            Text(currentMethod.displayNameAr, style = MaterialTheme.typography.bodyMedium, fontFamily = CairoFontFamily, fontWeight = FontWeight.Bold, color = IslamicGreenPrimary)
                         }
-                        Row {
-                            FilterChip(
-                                selected = settings.asrJuristic == "SHAFI",
-                                onClick = { onSelectAsrJuristic(PrayerCalculator.AsrJuristic.SHAFI) },
-                                label = { Text("الجمهور", fontFamily = CairoFontFamily, fontSize = 12.sp) }
-                            )
-                            Spacer(modifier = Modifier.width(6.dp))
-                            FilterChip(
-                                selected = settings.asrJuristic == "HANAFI",
-                                onClick = { onSelectAsrJuristic(PrayerCalculator.AsrJuristic.HANAFI) },
-                                label = { Text("حنفي", fontFamily = CairoFontFamily, fontSize = 12.sp) }
-                            )
+                        Column(horizontalAlignment = Alignment.End) {
+                            Text("مذهب العصر:", style = MaterialTheme.typography.labelMedium, fontFamily = CairoFontFamily)
+                            Text(currentAsr.displayNameAr, style = MaterialTheme.typography.bodyMedium, fontFamily = CairoFontFamily, fontWeight = FontWeight.Bold)
                         }
                     }
 
-                    Divider(color = MaterialTheme.colorScheme.outline.copy(alpha = 0.2f), modifier = Modifier.padding(vertical = 4.dp))
+                    Spacer(modifier = Modifier.height(8.dp))
+                    HorizontalDivider(color = MaterialTheme.colorScheme.outline.copy(alpha = 0.15f))
+                    Spacer(modifier = Modifier.height(8.dp))
 
-                    // High Latitude Rule
+                    // Minute adjustments quick summary
                     Row(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .clickable { showHighLatSheet = true }
-                            .padding(vertical = 8.dp),
+                        modifier = Modifier.fillMaxWidth(),
                         horizontalArrangement = Arrangement.SpaceBetween,
                         verticalAlignment = Alignment.CenterVertically
                     ) {
-                        Column(modifier = Modifier.weight(1f)) {
-                            Text("تعديل المناطق ذات خطوط العرض العالية:", style = MaterialTheme.typography.labelMedium, fontFamily = CairoFontFamily)
-                            val ruleName = try {
-                                PrayerCalculator.HighLatitudeRule.valueOf(settings.highLatitudeRule).displayNameAr
-                            } catch (_: Exception) {
-                                "بدون تعديل"
-                            }
-                            Text(ruleName, style = MaterialTheme.typography.bodySmall, fontFamily = CairoFontFamily, fontWeight = FontWeight.SemiBold, color = IslamicGoldDark)
+                        val hasAdjustments = settings.fajrAdjustmentMinutes != 0 ||
+                                settings.dhuhrAdjustmentMinutes != 0 ||
+                                settings.asrAdjustmentMinutes != 0 ||
+                                settings.maghribAdjustmentMinutes != 0 ||
+                                settings.ishaAdjustmentMinutes != 0
+
+                        Column {
+                            Text("التعديل اليدوي بالدقائق:", style = MaterialTheme.typography.labelMedium, fontFamily = CairoFontFamily)
+                            Text(
+                                if (hasAdjustments) "يوجد تعديلات نشطة" else "مطابق للحساب الفلكي المباشر",
+                                style = MaterialTheme.typography.bodySmall,
+                                fontFamily = CairoFontFamily,
+                                color = if (hasAdjustments) IslamicGoldDark else MaterialTheme.colorScheme.onSurfaceVariant
+                            )
                         }
-                        Icon(Icons.Default.ArrowBackIosNew, contentDescription = "تغيير", modifier = Modifier.size(16.dp))
-                    }
 
-                    Divider(color = MaterialTheme.colorScheme.outline.copy(alpha = 0.2f), modifier = Modifier.padding(vertical = 4.dp))
-
-                    // Manual minute adjustments button
-                    OutlinedButton(
-                        onClick = { showAdjustDialog = true },
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(top = 8.dp),
-                        shape = RoundedCornerShape(12.dp)
-                    ) {
-                        Icon(Icons.Default.Tune, contentDescription = "تعديل يدوي", modifier = Modifier.size(18.dp))
-                        Spacer(modifier = Modifier.width(8.dp))
-                        Text("تعديل يدوي لدقائق الأوقات (+/-)", fontFamily = CairoFontFamily)
+                        OutlinedButton(
+                            onClick = { showAdjustDialog = true },
+                            shape = RoundedCornerShape(10.dp)
+                        ) {
+                            Icon(Icons.Default.Tune, contentDescription = "تعديل الدقائق", modifier = Modifier.size(16.dp))
+                            Spacer(modifier = Modifier.width(4.dp))
+                            Text("ضبط الدقائق (+/-)", fontFamily = CairoFontFamily, fontSize = 12.sp)
+                        }
                     }
                 }
             }
             Spacer(modifier = Modifier.height(14.dp))
         }
 
-        // Official Disclaimer
+        // Official Required Disclaimer Card
         item {
             Card(
                 modifier = Modifier.fillMaxWidth(),
@@ -485,42 +550,65 @@ fun PrayerScreen(
                 ) {
                     Icon(
                         Icons.Default.Info,
-                        contentDescription = "تنبيه",
+                        contentDescription = "تنبيه رسمي",
                         tint = IslamicGoldDark,
                         modifier = Modifier.size(24.dp)
                     )
                     Spacer(modifier = Modifier.width(10.dp))
                     Text(
-                        text = "تنبيه: مواقيت الصلاة استرشادية وتقريبية وفق الحسابات الفلكية الدقيقة، وقد تختلف قليلًا عن التوقيت الرسمي المحلي في مساجد بلدك.",
+                        text = "قد تختلف مواقيت الصلاة بفارق بسيط عن التوقيت الرسمي المحلي، لذلك يُنصح بمراجعة تقويم وزارة الأوقاف أو الجهة الإسلامية الرسمية في بلدك.",
                         style = MaterialTheme.typography.bodySmall,
                         fontFamily = CairoFontFamily,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        lineHeight = 18.sp
                     )
                 }
             }
         }
     }
 
-    // Calculation Method Bottom Sheet
-    if (showMethodPickerSheet) {
+    // Comprehensive Prayer Settings Bottom Sheet
+    if (showSettingsSheet) {
         ModalBottomSheet(
-            onDismissRequest = { showMethodPickerSheet = false },
+            onDismissRequest = { showSettingsSheet = false },
             sheetState = rememberModalBottomSheetState()
         ) {
-            Column(
+            LazyColumn(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .padding(20.dp)
+                    .padding(horizontal = 20.dp, vertical = 10.dp),
+                contentPadding = PaddingValues(bottom = 32.dp)
             ) {
-                Text(
-                    text = "اختر طريقة حساب المواقيت",
-                    style = MaterialTheme.typography.titleLarge,
-                    fontFamily = CairoFontFamily,
-                    fontWeight = FontWeight.Bold,
-                    color = MaterialTheme.colorScheme.primary
-                )
-                Spacer(modifier = Modifier.height(12.dp))
-                PrayerCalculator.CalculationMethod.values().forEach { method ->
+                item {
+                    Text(
+                        text = "إعدادات مواقيت الصلاة",
+                        style = MaterialTheme.typography.titleLarge,
+                        fontFamily = CairoFontFamily,
+                        fontWeight = FontWeight.Bold,
+                        color = MaterialTheme.colorScheme.primary
+                    )
+                    Spacer(modifier = Modifier.height(6.dp))
+                    Text(
+                        text = "اختر الهيئة أو الطريقة الفلكية ومذهب حساب صلاة العصر:",
+                        style = MaterialTheme.typography.bodySmall,
+                        fontFamily = CairoFontFamily,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                    Spacer(modifier = Modifier.height(14.dp))
+                }
+
+                // 8 Approved Calculation Methods
+                item {
+                    Text(
+                        text = "طرق الحساب المعتمدة (٨ طرق):",
+                        style = MaterialTheme.typography.titleMedium,
+                        fontFamily = CairoFontFamily,
+                        fontWeight = FontWeight.Bold
+                    )
+                    Spacer(modifier = Modifier.height(8.dp))
+                }
+
+                items(PrayerCalculator.CalculationMethod.values().toList()) { method ->
                     val isSelected = settings.calculationMethod == method.name
                     Card(
                         modifier = Modifier
@@ -528,7 +616,6 @@ fun PrayerScreen(
                             .padding(vertical = 4.dp)
                             .clickable {
                                 onSelectCalculationMethod(method)
-                                showMethodPickerSheet = false
                             },
                         shape = RoundedCornerShape(12.dp),
                         colors = CardDefaults.cardColors(
@@ -538,63 +625,140 @@ fun PrayerScreen(
                         Row(
                             modifier = Modifier
                                 .fillMaxWidth()
-                                .padding(14.dp),
+                                .padding(12.dp),
                             horizontalArrangement = Arrangement.SpaceBetween,
                             verticalAlignment = Alignment.CenterVertically
                         ) {
-                            Text(
-                                text = method.displayNameAr,
-                                style = MaterialTheme.typography.bodyMedium,
-                                fontFamily = CairoFontFamily,
-                                fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal
-                            )
+                            Column(modifier = Modifier.weight(1f)) {
+                                Text(
+                                    text = method.displayNameAr,
+                                    style = MaterialTheme.typography.bodyMedium,
+                                    fontFamily = CairoFontFamily,
+                                    fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium
+                                )
+                                val subtitle = when (method) {
+                                    PrayerCalculator.CalculationMethod.UMM_AL_QURA -> "الفجر: 18.5° • العشاء: بعد المغرب بـ 90 دقيقة (120 د في رمضان)"
+                                    PrayerCalculator.CalculationMethod.MOROCCO_HABOUS -> "الفجر: 19° • العشاء: 17° (المملكة المغربية)"
+                                    PrayerCalculator.CalculationMethod.MWL -> "الفجر: 18° • العشاء: 17° (أوروبا والعالم الإسلامي)"
+                                    PrayerCalculator.CalculationMethod.EGYPTIAN -> "الفجر: 19.5° • العشاء: 17.5° (مصر، السودان، الشام)"
+                                    PrayerCalculator.CalculationMethod.KARACHI -> "الفجر: 18° • العشاء: 18° (باكستان، بنغلاديش، الهند)"
+                                    PrayerCalculator.CalculationMethod.ISNA -> "الفجر: 15° • العشاء: 15° (الولايات المتحدة وكندا)"
+                                    PrayerCalculator.CalculationMethod.FRANCE_UOIF -> "الفجر: 12° • العشاء: 12° (فرنسا وغرب أوروبا)"
+                                    PrayerCalculator.CalculationMethod.CUSTOM -> "تحديد يدوي لزاويتي الفجر والعشاء"
+                                }
+                                Text(
+                                    text = subtitle,
+                                    style = MaterialTheme.typography.labelSmall,
+                                    fontFamily = CairoFontFamily,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                            }
                             if (isSelected) {
-                                Icon(Icons.Default.Check, contentDescription = "محدد", tint = IslamicGreenPrimary)
+                                Icon(Icons.Default.CheckCircle, contentDescription = "محدد", tint = IslamicGreenPrimary)
                             }
                         }
                     }
                 }
-            }
-        }
-    }
 
-    // High Latitude Rule Bottom Sheet
-    if (showHighLatSheet) {
-        ModalBottomSheet(
-            onDismissRequest = { showHighLatSheet = false },
-            sheetState = rememberModalBottomSheetState()
-        ) {
-            Column(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(20.dp)
-            ) {
-                Text(
-                    text = "طرق التقدير لخطوط العرض العالية",
-                    style = MaterialTheme.typography.titleLarge,
-                    fontFamily = CairoFontFamily,
-                    fontWeight = FontWeight.Bold,
-                    color = MaterialTheme.colorScheme.primary
-                )
-                Spacer(modifier = Modifier.height(6.dp))
-                Text(
-                    text = "تُستخدم في المناطق الشمالية (أوروبا وأمريكا الشمالية) التي تغيب فيها علامات الشفق الفلكي صيفًا:",
-                    style = MaterialTheme.typography.bodySmall,
-                    fontFamily = CairoFontFamily,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                )
-                Spacer(modifier = Modifier.height(12.dp))
-                PrayerCalculator.HighLatitudeRule.values().forEach { rule ->
+                // Custom angles input if CUSTOM method selected
+                if (settings.calculationMethod == PrayerCalculator.CalculationMethod.CUSTOM.name) {
+                    item {
+                        Card(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(vertical = 8.dp),
+                            shape = RoundedCornerShape(12.dp),
+                            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.4f))
+                        ) {
+                            Column(modifier = Modifier.padding(12.dp)) {
+                                Text(
+                                    text = "إدخال زوايا الحساب المخصصة:",
+                                    style = MaterialTheme.typography.labelMedium,
+                                    fontFamily = CairoFontFamily,
+                                    fontWeight = FontWeight.Bold
+                                )
+                                Spacer(modifier = Modifier.height(8.dp))
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                                ) {
+                                    OutlinedTextField(
+                                        value = customFajrText,
+                                        onValueChange = {
+                                            customFajrText = it
+                                            val f = it.toDoubleOrNull()
+                                            val i = customIshaText.toDoubleOrNull()
+                                            if (f != null && i != null) onUpdateCustomAngles(f, i)
+                                        },
+                                        label = { Text("زاوية الفجر (°)", fontFamily = CairoFontFamily) },
+                                        modifier = Modifier.weight(1f)
+                                    )
+                                    OutlinedTextField(
+                                        value = customIshaText,
+                                        onValueChange = {
+                                            customIshaText = it
+                                            val f = customFajrText.toDoubleOrNull()
+                                            val i = it.toDoubleOrNull()
+                                            if (f != null && i != null) onUpdateCustomAngles(f, i)
+                                        },
+                                        label = { Text("زاوية العشاء (°)", fontFamily = CairoFontFamily) },
+                                        modifier = Modifier.weight(1f)
+                                    )
+                                }
+                            }
+                        }
+                    }
+                }
+
+                // Asr Juristic Method
+                item {
+                    Spacer(modifier = Modifier.height(14.dp))
+                    Text(
+                        text = "مذهب حساب صلاة العصر:",
+                        style = MaterialTheme.typography.titleMedium,
+                        fontFamily = CairoFontFamily,
+                        fontWeight = FontWeight.Bold
+                    )
+                    Spacer(modifier = Modifier.height(6.dp))
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        FilterChip(
+                            selected = settings.asrJuristic == "SHAFI",
+                            onClick = { onSelectAsrJuristic(PrayerCalculator.AsrJuristic.SHAFI) },
+                            label = { Text("الجمهور (ظل المثل ١.٠)", fontFamily = CairoFontFamily) },
+                            modifier = Modifier.weight(1f)
+                        )
+                        FilterChip(
+                            selected = settings.asrJuristic == "HANAFI",
+                            onClick = { onSelectAsrJuristic(PrayerCalculator.AsrJuristic.HANAFI) },
+                            label = { Text("الحنفي (ظل المثلين ٢.٠)", fontFamily = CairoFontFamily) },
+                            modifier = Modifier.weight(1f)
+                        )
+                    }
+                }
+
+                // High Latitude Adjustment Rule
+                item {
+                    Spacer(modifier = Modifier.height(14.dp))
+                    Text(
+                        text = "تعديل خطوط العرض العالية (الدول الشمالية):",
+                        style = MaterialTheme.typography.titleMedium,
+                        fontFamily = CairoFontFamily,
+                        fontWeight = FontWeight.Bold
+                    )
+                    Spacer(modifier = Modifier.height(6.dp))
+                }
+
+                items(PrayerCalculator.HighLatitudeRule.values().toList()) { rule ->
                     val isSelected = settings.highLatitudeRule == rule.name
                     Card(
                         modifier = Modifier
                             .fillMaxWidth()
-                            .padding(vertical = 4.dp)
-                            .clickable {
-                                onSelectHighLatitudeRule(rule)
-                                showHighLatSheet = false
-                            },
-                        shape = RoundedCornerShape(12.dp),
+                            .padding(vertical = 3.dp)
+                            .clickable { onSelectHighLatitudeRule(rule) },
+                        shape = RoundedCornerShape(10.dp),
                         colors = CardDefaults.cardColors(
                             containerColor = if (isSelected) IslamicGreenContainer else MaterialTheme.colorScheme.surface
                         )
@@ -602,7 +766,7 @@ fun PrayerScreen(
                         Row(
                             modifier = Modifier
                                 .fillMaxWidth()
-                                .padding(14.dp),
+                                .padding(10.dp),
                             horizontalArrangement = Arrangement.SpaceBetween,
                             verticalAlignment = Alignment.CenterVertically
                         ) {
@@ -616,6 +780,18 @@ fun PrayerScreen(
                                 Icon(Icons.Default.Check, contentDescription = "محدد", tint = IslamicGreenPrimary)
                             }
                         }
+                    }
+                }
+
+                // Close Button
+                item {
+                    Spacer(modifier = Modifier.height(16.dp))
+                    Button(
+                        onClick = { showSettingsSheet = false },
+                        modifier = Modifier.fillMaxWidth(),
+                        shape = RoundedCornerShape(12.dp)
+                    ) {
+                        Text("تم وحفظ الإعدادات", fontFamily = CairoFontFamily, fontWeight = FontWeight.Bold)
                     }
                 }
             }
@@ -632,7 +808,7 @@ fun PrayerScreen(
             text = {
                 Column {
                     Text(
-                        text = "يمكنك تقديم أو تأخير أي صلاة بدقائق لتطابق أذان مسجدك المحلي:",
+                        text = "يمكنك تقديم أو تأخير أي صلاة بدقائق لتطابق أذان وتقويم مسجدك المحلي (-60 إلى +60 دقيقة):",
                         style = MaterialTheme.typography.bodySmall,
                         fontFamily = CairoFontFamily
                     )
@@ -667,6 +843,16 @@ fun PrayerScreen(
                                 ) { Text("+١") }
                             }
                         }
+                    }
+
+                    Spacer(modifier = Modifier.height(8.dp))
+                    OutlinedButton(
+                        onClick = { onResetPrayerAdjustments() },
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Icon(Icons.Default.Refresh, contentDescription = "إعادة ضبط", modifier = Modifier.size(16.dp))
+                        Spacer(modifier = Modifier.width(6.dp))
+                        Text("إعادة ضبط جميع التعديلات إلى صفر", fontFamily = CairoFontFamily, fontSize = 12.sp)
                     }
                 }
             },

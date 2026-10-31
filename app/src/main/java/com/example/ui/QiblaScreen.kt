@@ -79,69 +79,26 @@ fun QiblaScreen(
         return diff
     }
 
-    var currentHeading by remember { mutableFloatStateOf(0f) }
-    var sensorAccuracy by remember { mutableIntStateOf(SensorManager.SENSOR_STATUS_ACCURACY_HIGH) }
-    var hasCompassSensor by remember { mutableStateOf(true) }
-    var hasReceivedSensorEvent by remember { mutableStateOf(false) }
-    var hasVibratedAlignment by remember { mutableStateOf(false) }
-    var lastMagUpdateMs by remember { mutableLongStateOf(0L) }
+    val sm = remember(context) { context.getSystemService(Context.SENSOR_SERVICE) as? SensorManager }
+    val rotationVectorSensor = remember(sm) { sm?.getDefaultSensor(Sensor.TYPE_ROTATION_VECTOR) }
+    val geomagVectorSensor = remember(sm) { sm?.getDefaultSensor(Sensor.TYPE_GEOMAGNETIC_ROTATION_VECTOR) }
+    val accelSensor = remember(sm) { sm?.getDefaultSensor(Sensor.TYPE_ACCELEROMETER) }
+    val magSensor = remember(sm) { sm?.getDefaultSensor(Sensor.TYPE_MAGNETIC_FIELD) }
+    @Suppress("DEPRECATION")
+    val orientationSensor = remember(sm) { sm?.getDefaultSensor(Sensor.TYPE_ORIENTATION) }
 
-    val configuration = LocalConfiguration.current
-
-    // Synchronize heading whenever screen configuration or display rotation changes
-    LaunchedEffect(configuration.orientation) {
-        @Suppress("DEPRECATION")
-        val displayRotation = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
-            context.display?.rotation ?: Surface.ROTATION_0
-        } else {
-            (context.getSystemService(Context.WINDOW_SERVICE) as? WindowManager)?.defaultDisplay?.rotation ?: Surface.ROTATION_0
-        }
-        val rotDeg = when (displayRotation) {
-            Surface.ROTATION_90 -> 90f
-            Surface.ROTATION_180 -> 180f
-            Surface.ROTATION_270 -> 270f
-            else -> 0f
-        }
-        if (System.currentTimeMillis() - lastMagUpdateMs > 1200L) {
-            val currentNorm = ((currentHeading % 360f) + 360f) % 360f
-            val diff = shortestAngleDiff(rotDeg, currentNorm)
-            currentHeading += diff
-        }
+    val isHardwareSensorAvailable = remember(sm) {
+        rotationVectorSensor != null || geomagVectorSensor != null || (accelSensor != null && magSensor != null) || orientationSensor != null
     }
 
-    // Comprehensive orientation tracking: Hardware rotation vector + Accel/Mag + OrientationEventListener
+    var currentHeading by remember { mutableFloatStateOf(0f) }
+    var sensorAccuracy by remember { mutableIntStateOf(SensorManager.SENSOR_STATUS_ACCURACY_HIGH) }
+    var hasCompassSensor by remember { mutableStateOf(isHardwareSensorAvailable) }
+    var hasReceivedSensorEvent by remember { mutableStateOf(false) }
+    var hasVibratedAlignment by remember { mutableStateOf(false) }
+
+    // Hardware sensor listener for live 360° device rotation
     DisposableEffect(context) {
-        val sm = context.getSystemService(Context.SENSOR_SERVICE) as? SensorManager
-        val rotationVectorSensor = sm?.getDefaultSensor(Sensor.TYPE_ROTATION_VECTOR)
-        val geomagVectorSensor = sm?.getDefaultSensor(Sensor.TYPE_GEOMAGNETIC_ROTATION_VECTOR)
-        val accelSensor = sm?.getDefaultSensor(Sensor.TYPE_ACCELEROMETER)
-        val magSensor = sm?.getDefaultSensor(Sensor.TYPE_MAGNETIC_FIELD)
-        @Suppress("DEPRECATION")
-        val orientationSensor = sm?.getDefaultSensor(Sensor.TYPE_ORIENTATION)
-
-        if (rotationVectorSensor == null && geomagVectorSensor == null && (accelSensor == null || magSensor == null) && orientationSensor == null) {
-            hasCompassSensor = false
-        }
-
-        // 1. Android built-in OrientationEventListener - always detects device rotation (0..359 degrees) even in emulators
-        val orientationListener = object : OrientationEventListener(context, SensorManager.SENSOR_DELAY_UI) {
-            override fun onOrientationChanged(orientation: Int) {
-                if (orientation == ORIENTATION_UNKNOWN) return
-                hasReceivedSensorEvent = true
-                // If magnetic sensor is not actively updating, physical orientation rotates the compass
-                if (System.currentTimeMillis() - lastMagUpdateMs > 1000L) {
-                    val targetHeading = orientation.toFloat()
-                    val currentNorm = ((currentHeading % 360f) + 360f) % 360f
-                    val diff = shortestAngleDiff(targetHeading, currentNorm)
-                    currentHeading += diff * 0.35f
-                }
-            }
-        }
-        if (orientationListener.canDetectOrientation()) {
-            orientationListener.enable()
-        }
-
-        // 2. Hardware Sensor Listener with automatic fallback
         val listener = object : SensorEventListener {
             val rotMatrix = FloatArray(9)
             val remappedMatrix = FloatArray(9)
@@ -154,7 +111,7 @@ fun QiblaScreen(
 
             override fun onSensorChanged(event: SensorEvent) {
                 val now = System.currentTimeMillis()
-                if (now - lastUpdateMs < 20L) return
+                if (now - lastUpdateMs < 16L) return // ~60 FPS update rate
 
                 var newDeg: Float? = null
 
@@ -193,23 +150,13 @@ fun QiblaScreen(
                     }
                     Sensor.TYPE_ACCELEROMETER -> {
                         for (i in 0..2) {
-                            lastAccel[i] = lastAccel[i] + 0.25f * (event.values[i] - lastAccel[i])
+                            lastAccel[i] = lastAccel[i] + 0.3f * (event.values[i] - lastAccel[i])
                         }
                         hasAccel = true
-
-                        // Accelerometer tilt rotation fallback when magnetic sensor is absent
-                        if (!hasMag && System.currentTimeMillis() - lastMagUpdateMs > 1000L) {
-                            val ax = lastAccel[0]
-                            val ay = lastAccel[1]
-                            if (abs(ax) > 0.4f || abs(ay) > 0.4f) {
-                                val angleRad = atan2(-ax.toDouble(), ay.toDouble())
-                                newDeg = ((Math.toDegrees(angleRad) + 360.0) % 360.0).toFloat()
-                            }
-                        }
                     }
                     Sensor.TYPE_MAGNETIC_FIELD -> {
                         for (i in 0..2) {
-                            lastMag[i] = lastMag[i] + 0.25f * (event.values[i] - lastMag[i])
+                            lastMag[i] = lastMag[i] + 0.3f * (event.values[i] - lastMag[i])
                         }
                         hasMag = true
                     }
@@ -222,6 +169,7 @@ fun QiblaScreen(
                     }
                 }
 
+                // If rotation vector didn't compute, fallback to Accel + Mag rotation matrix
                 if (newDeg == null && hasAccel && hasMag) {
                     try {
                         if (SensorManager.getRotationMatrix(rotMatrix, null, lastAccel, lastMag)) {
@@ -250,14 +198,13 @@ fun QiblaScreen(
                 }
 
                 newDeg?.let { deg ->
+                    hasCompassSensor = true
                     hasReceivedSensorEvent = true
                     lastUpdateMs = now
-                    if (event.sensor.type != Sensor.TYPE_ACCELEROMETER || hasMag) {
-                        lastMagUpdateMs = now
-                    }
+
                     val currentNorm = ((currentHeading % 360f) + 360f) % 360f
                     val diff = shortestAngleDiff(deg, currentNorm)
-                    val factor = if (abs(diff) < 1.0f) 0.15f else 0.35f
+                    val factor = if (abs(diff) < 1.0f) 0.20f else 0.45f
                     currentHeading += diff * factor
                 }
             }
@@ -267,28 +214,15 @@ fun QiblaScreen(
             }
         }
 
-        // Register sensors using SENSOR_DELAY_UI for standard, unthrottled Android sensor delivery
-        rotationVectorSensor?.let { sm?.registerListener(listener, it, SensorManager.SENSOR_DELAY_UI) }
-        geomagVectorSensor?.let { sm?.registerListener(listener, it, SensorManager.SENSOR_DELAY_UI) }
-        accelSensor?.let { sm?.registerListener(listener, it, SensorManager.SENSOR_DELAY_UI) }
-        magSensor?.let { sm?.registerListener(listener, it, SensorManager.SENSOR_DELAY_UI) }
-        orientationSensor?.let { sm?.registerListener(listener, it, SensorManager.SENSOR_DELAY_UI) }
+        // Register sensors using SENSOR_DELAY_GAME for high responsiveness and smooth needle rotation
+        rotationVectorSensor?.let { sm?.registerListener(listener, it, SensorManager.SENSOR_DELAY_GAME) }
+        geomagVectorSensor?.let { sm?.registerListener(listener, it, SensorManager.SENSOR_DELAY_GAME) }
+        accelSensor?.let { sm?.registerListener(listener, it, SensorManager.SENSOR_DELAY_GAME) }
+        magSensor?.let { sm?.registerListener(listener, it, SensorManager.SENSOR_DELAY_GAME) }
+        orientationSensor?.let { sm?.registerListener(listener, it, SensorManager.SENSOR_DELAY_GAME) }
 
         onDispose {
             sm?.unregisterListener(listener)
-            orientationListener.disable()
-        }
-    }
-
-    // On start, smoothly auto-align towards Qibla direction so needle is immediately oriented
-    LaunchedEffect(Unit) {
-        delay(600)
-        if (!hasReceivedSensorEvent) {
-            hasCompassSensor = false
-            // Animate initial heading to orient needle towards Kaaba
-            val currentNorm = ((currentHeading % 360f) + 360f) % 360f
-            val diff = shortestAngleDiff(qiblaResult.qiblaAngle.toFloat(), currentNorm)
-            currentHeading += diff
         }
     }
 

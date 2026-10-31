@@ -23,8 +23,7 @@ class FridaySectionTest {
     fun setUp() {
         context = ApplicationProvider.getApplicationContext<Context>()
         // Reset preferences before test
-        FridayPreferences.resetWeeklyProgress(context)
-        FridayPreferences.resetSalawat(context)
+        FridayPreferences.resetAllFridayData(context)
     }
 
     @Test
@@ -44,7 +43,7 @@ class FridaySectionTest {
     @Test
     fun testSalawatCounterAndGoal() {
         assertEquals(0, FridayPreferences.getSalawatCount(context))
-        assertEquals(100, FridayPreferences.getSalawatGoal(context))
+        assertEquals(300, FridayPreferences.getSalawatGoal(context))
 
         // Increment
         val count1 = FridayPreferences.incrementSalawat(context)
@@ -56,88 +55,94 @@ class FridaySectionTest {
         assertEquals(2, FridayPreferences.getSalawatCount(context))
 
         // Change goal
-        FridayPreferences.setSalawatGoal(context, 300)
-        assertEquals(300, FridayPreferences.getSalawatGoal(context))
+        FridayPreferences.setSalawatGoal(context, 500)
+        assertEquals(500, FridayPreferences.getSalawatGoal(context))
 
         // Reset
         FridayPreferences.resetSalawat(context)
         assertEquals(0, FridayPreferences.getSalawatCount(context))
         // Goal remains
-        assertEquals(300, FridayPreferences.getSalawatGoal(context))
+        assertEquals(500, FridayPreferences.getSalawatGoal(context))
     }
 
     @Test
     fun testFridaySunanChecklist() {
         val sunnahId = "ghusl"
-        assertFalse(FridayPreferences.isSunnahDone(context, sunnahId))
+        assertFalse(FridayPreferences.getCheckedSunan(context).contains(sunnahId))
 
-        FridayPreferences.toggleSunnah(context, sunnahId)
-        assertTrue(FridayPreferences.isSunnahDone(context, sunnahId))
+        FridayPreferences.toggleSunnahChecked(context, sunnahId)
+        assertTrue(FridayPreferences.getCheckedSunan(context).contains(sunnahId))
 
-        FridayPreferences.toggleSunnah(context, sunnahId)
-        assertFalse(FridayPreferences.isSunnahDone(context, sunnahId))
+        FridayPreferences.toggleSunnahChecked(context, sunnahId)
+        assertFalse(FridayPreferences.getCheckedSunan(context).contains(sunnahId))
     }
 
     @Test
     fun testFridayAdhkarFavoritesAndCompleted() {
-        val dhikrId = "friday_salawat_1"
-        assertFalse(FridayPreferences.isDhikrFavorite(context, dhikrId))
-        assertFalse(FridayPreferences.isDhikrCompleted(context, dhikrId))
+        val dhikrId = "salawat_ibrahimiyyah"
+        assertFalse(FridayPreferences.getFavoriteAdhkar(context).contains(dhikrId))
+        assertFalse(FridayPreferences.getCompletedAdhkar(context).contains(dhikrId))
 
         // Toggle Favorite
-        FridayPreferences.toggleDhikrFavorite(context, dhikrId)
-        assertTrue(FridayPreferences.isDhikrFavorite(context, dhikrId))
+        FridayPreferences.toggleFavoriteDhikr(context, dhikrId)
+        assertTrue(FridayPreferences.getFavoriteAdhkar(context).contains(dhikrId))
 
         // Toggle Completed
-        FridayPreferences.toggleDhikrCompleted(context, dhikrId)
-        assertTrue(FridayPreferences.isDhikrCompleted(context, dhikrId))
+        FridayPreferences.toggleCompletedDhikr(context, dhikrId)
+        assertTrue(FridayPreferences.getCompletedAdhkar(context).contains(dhikrId))
 
         // Untoggle Completed
-        FridayPreferences.toggleDhikrCompleted(context, dhikrId)
-        assertFalse(FridayPreferences.isDhikrCompleted(context, dhikrId))
+        FridayPreferences.toggleCompletedDhikr(context, dhikrId)
+        assertFalse(FridayPreferences.getCompletedAdhkar(context).contains(dhikrId))
     }
 
     @Test
     fun testFridayDataAuthenticity() {
-        val sunan = FridayData.fridaySunan
+        val sunan = FridayData.sunanList
         assertTrue("Friday Sunan must contain at least 7 authentic items", sunan.size >= 7)
 
         for (item in sunan) {
             assertTrue("Sunan ID must not be blank", item.id.isNotBlank())
             assertTrue("Sunan title must not be blank", item.title.isNotBlank())
             assertTrue("Sunan description must not be blank", item.description.isNotBlank())
-            assertTrue("Sunan hadith evidence must not be blank", item.hadithSource.isNotBlank())
+            assertTrue("Sunan hadith evidence must not be blank", item.evidence.isNotBlank())
+            assertTrue("Sunan hadith source must not be blank", item.source.isNotBlank())
         }
 
-        val adhkar = FridayData.fridayAdhkar
+        val adhkar = FridayData.adhkarList
         assertTrue("Friday Adhkar must contain authentic supplications", adhkar.size >= 4)
 
         for (adhkarItem in adhkar) {
             assertTrue("Dhikr text must not be blank", adhkarItem.text.isNotBlank())
             assertTrue("Dhikr title must not be blank", adhkarItem.title.isNotBlank())
-            assertTrue("Dhikr hadith citation must not be blank", adhkarItem.hadithSource.isNotBlank())
+            assertTrue("Dhikr hadith citation must not be blank", adhkarItem.source.isNotBlank())
+            val isAuthenticSource = adhkarItem.source.contains("بخاري") ||
+                    adhkarItem.source.contains("مسلم") ||
+                    adhkarItem.source.contains("داود") ||
+                    adhkarItem.source.contains("ترمذي") ||
+                    adhkarItem.source.contains("نسائي") ||
+                    adhkarItem.source.contains("حاكم") ||
+                    adhkarItem.source.contains("ماجه") ||
+                    adhkarItem.source.contains("طبراني") ||
+                    adhkarItem.source.contains("أحمد") ||
+                    adhkarItem.source.contains("ألباني") ||
+                    adhkarItem.source.contains("الباني")
             assertTrue(
-                "Dhikr citation must reference authentic sources",
-                adhkarItem.hadithSource.contains("البخاري") ||
-                        adhkarItem.hadithSource.contains("مسلم") ||
-                        adhkarItem.hadithSource.contains("أبو داود") ||
-                        adhkarItem.hadithSource.contains("الترمذي") ||
-                        adhkarItem.hadithSource.contains("النسائي") ||
-                        adhkarItem.hadithSource.contains("الحاكم") ||
-                        adhkarItem.hadithSource.contains("أحمد")
+                "Dhikr citation must reference authentic sources for ${adhkarItem.title} (${adhkarItem.source})",
+                isAuthenticSource
             )
         }
 
-        assertTrue("Hour of Response description must be present and authentic", FridayData.HOUR_OF_RESPONSE_SCHOLARLY.isNotBlank())
+        assertTrue("Hour of Response description must be present and authentic", FridayData.HOUR_OF_RESPONSE_EXPLANATION.isNotBlank())
         assertTrue(
-            "Hour of Response must reference the Prophetic Hadith",
-            FridayData.HOUR_OF_RESPONSE_HADITH.contains("ساعة") && FridayData.HOUR_OF_RESPONSE_HADITH.contains("الجمعة")
+            "Hour of Response explanation must reference the Prophetic Hadith and Sahih Muslim",
+            FridayData.HOUR_OF_RESPONSE_EXPLANATION.contains("ساعة") && FridayData.HOUR_OF_RESPONSE_EXPLANATION.contains("الجمعة")
         )
     }
 
     @Test
     fun testNextFridayCalculation() {
-        val nextFridayTime = FridayReminderManager.getNextFridayMillis(10, 0)
+        val nextFridayTime = FridayReminderManager.getNextFridayMillis("10:00")
         val now = System.currentTimeMillis()
 
         assertTrue("Next Friday must be in the future", nextFridayTime > now)

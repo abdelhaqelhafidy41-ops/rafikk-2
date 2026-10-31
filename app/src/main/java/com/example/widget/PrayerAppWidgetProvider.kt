@@ -60,12 +60,38 @@ class PrayerAppWidgetProvider : AppWidgetProvider() {
                         PrayerCalculator.CalculationMethod.UMM_AL_QURA
                     }
 
+                    val juristic = try {
+                        PrayerCalculator.AsrJuristic.valueOf(settings?.asrJuristic ?: "")
+                    } catch (_: Exception) {
+                        PrayerCalculator.AsrJuristic.SHAFI
+                    }
+                    val highLat = try {
+                        PrayerCalculator.HighLatitudeRule.valueOf(settings?.highLatitudeRule ?: "")
+                    } catch (_: Exception) {
+                        PrayerCalculator.HighLatitudeRule.NONE
+                    }
+
                     val cal = Calendar.getInstance()
+                    if (!settings?.timezoneId.isNullOrBlank()) {
+                        try {
+                            cal.timeZone = java.util.TimeZone.getTimeZone(settings!!.timezoneId)
+                        } catch (_: Exception) {}
+                    }
+
                     val times = PrayerCalculator.calculateTimes(
                         latitude = lat,
                         longitude = lng,
                         calendar = cal,
-                        method = method
+                        method = method,
+                        asrJuristic = juristic,
+                        highLatRule = highLat,
+                        customFajrAngle = settings?.customFajrAngle ?: 18.0,
+                        customIshaAngle = settings?.customIshaAngle ?: 17.0,
+                        fajrAdj = settings?.fajrAdjustmentMinutes ?: 0,
+                        dhuhrAdj = settings?.dhuhrAdjustmentMinutes ?: 0,
+                        asrAdj = settings?.asrAdjustmentMinutes ?: 0,
+                        maghribAdj = settings?.maghribAdjustmentMinutes ?: 0,
+                        ishaAdj = settings?.ishaAdjustmentMinutes ?: 0
                     )
 
                     views.setTextViewText(R.id.widget_tv_city, "🕌 $city")

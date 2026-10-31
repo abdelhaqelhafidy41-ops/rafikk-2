@@ -261,9 +261,7 @@ class MainActivity : ComponentActivity() {
                                         onBack = { viewModel.closeSubScreen() },
                                         onOpenKahf = { viewModel.openSurahByNumber(18) },
                                         onPlayKahfAudio = {
-                                            viewModel.openSurahByNumber(18)
-                                            val ayahs = QuranData.getSurahAyahs(18, settings.selectedReciterId, this@MainActivity)
-                                            ayahs.firstOrNull()?.let { viewModel.playAyahAudio(it) }
+                                            viewModel.openSurahAndPlay(18)
                                         }
                                     )
                                 }
@@ -314,6 +312,8 @@ class MainActivity : ComponentActivity() {
                                                 onSelectAsrJuristic = { juristic -> viewModel.updateAsrJuristic(juristic) },
                                                 onSelectHighLatitudeRule = { rule -> viewModel.updateHighLatitudeRule(rule) },
                                                 onAdjustPrayer = { key, diff -> viewModel.updatePrayerAdjustment(key, diff) },
+                                                onResetPrayerAdjustments = { viewModel.resetPrayerAdjustments() },
+                                                onUpdateCustomAngles = { fajr, isha -> viewModel.updateCustomAngles(fajr, isha) },
                                                 onUpdatePrePrayerAlert = { enabled, mins -> viewModel.updatePrePrayerAlert(enabled, mins) }
                                             )
                                         }

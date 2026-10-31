@@ -256,8 +256,11 @@ fun CitySelectionScreen(
                             verticalAlignment = Alignment.CenterVertically
                         ) {
                             Column(modifier = Modifier.weight(1f)) {
+                                val nameDisplay = if (city.cityNameEn.isNotBlank()) "${city.cityNameAr} (${city.cityNameEn})" else city.cityNameAr
+                                val countryDisplay = if (city.countryNameEn.isNotBlank()) "${city.countryNameAr} (${city.countryNameEn})" else city.countryNameAr
+
                                 Text(
-                                    text = city.cityNameAr,
+                                    text = nameDisplay,
                                     style = MaterialTheme.typography.titleMedium,
                                     fontFamily = CairoFontFamily,
                                     fontWeight = FontWeight.Bold,
@@ -265,14 +268,14 @@ fun CitySelectionScreen(
                                 )
                                 Spacer(modifier = Modifier.height(2.dp))
                                 Text(
-                                    text = "${city.countryNameAr} • ${city.timezoneId}",
+                                    text = "$countryDisplay • ${city.defaultMethod.displayNameAr}",
                                     style = MaterialTheme.typography.bodySmall,
                                     fontFamily = CairoFontFamily,
                                     color = MaterialTheme.colorScheme.onSurfaceVariant
                                 )
                                 Spacer(modifier = Modifier.height(2.dp))
                                 Text(
-                                    text = "خط العرض: ${city.latitude}° ، خط الطول: ${city.longitude}°",
+                                    text = "الإحداثيات: ${String.format(Locale.US, "%.3f", city.latitude)}°, ${String.format(Locale.US, "%.3f", city.longitude)}° • ${city.timezoneId}",
                                     style = MaterialTheme.typography.labelSmall,
                                     fontFamily = CairoFontFamily,
                                     color = MaterialTheme.colorScheme.outline

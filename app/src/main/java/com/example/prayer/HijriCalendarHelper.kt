@@ -30,6 +30,19 @@ object HijriCalendarHelper {
         return "$dayName، $hDay $monthName $hYear هـ"
     }
 
+    fun getHijriMonth(calendar: Calendar = Calendar.getInstance()): Int {
+        val y = calendar.get(Calendar.YEAR)
+        val m = calendar.get(Calendar.MONTH) + 1
+        val d = calendar.get(Calendar.DAY_OF_MONTH)
+        val jd = gregorianToJulian(y, m, d)
+        val (_, hMonth, _) = julianToHijri(jd)
+        return hMonth
+    }
+
+    fun isRamadan(calendar: Calendar = Calendar.getInstance()): Boolean {
+        return getHijriMonth(calendar) == 9
+    }
+
     private fun gregorianToJulian(year: Int, month: Int, day: Int): Double {
         var y = year
         var m = month
